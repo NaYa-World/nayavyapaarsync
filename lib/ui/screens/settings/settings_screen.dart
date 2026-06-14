@@ -21,6 +21,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _addressController = TextEditingController();
   final _gstinController = TextEditingController();
   final _stateController = TextEditingController(text: 'Telangana');
+  String _selectedRole = 'OWNER';
   bool _isLoading = false;
 
   @override
@@ -37,6 +38,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _addressController.text = settings.address;
       _gstinController.text = settings.gstin ?? '';
       _stateController.text = settings.state;
+      setState(() {
+        _selectedRole = settings.role;
+      });
     }
   }
 
@@ -68,6 +72,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         gstin: _gstinController.text.trim().isEmpty ? null : _gstinController.text.trim(),
         state: stateName,
         stateCode: stateCode,
+        role: _selectedRole,
       );
 
       // Save database settings
@@ -155,7 +160,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                             );
                             if (confirm == true) {
-                              await ref.read(authProvider.notifier).signOut();
+                              await ref.read(authProvider.notifier).signOut(ref);
                             }
                           },
                         ),
@@ -172,6 +177,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _selectedRole,
+                decoration: const InputDecoration(
+                  labelText: 'Device Role / పరికరం పాత్ర *',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'OWNER', child: Text('Owner (యజమాని)')),
+                  DropdownMenuItem(value: 'ACCOUNTANT', child: Text('Accountant (అకౌంటెంట్)')),
+                ],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() {
+                      _selectedRole = val;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _firmNameController,
                 decoration: const InputDecoration(

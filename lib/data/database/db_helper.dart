@@ -22,7 +22,7 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -86,6 +86,20 @@ class DbHelper {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           is_deleted INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+    }
+    if (oldVersion < 5) {
+      await db.execute('''
+        CREATE TABLE sync_conflicts (
+          id TEXT PRIMARY KEY,
+          table_name TEXT NOT NULL,
+          record_id TEXT NOT NULL,
+          operation TEXT NOT NULL,
+          local_payload TEXT,
+          remote_payload TEXT,
+          resolved INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
         )
       ''');
     }
@@ -304,6 +318,20 @@ class DbHelper {
     // Prepopulate default settings
     await db.insert('settings', {'key': 'state', 'value': 'Telangana'});
     await db.insert('settings', {'key': 'state_code', 'value': '36'});
+
+    // 13. Sync Conflicts table
+    await db.execute('''
+      CREATE TABLE sync_conflicts (
+        id TEXT PRIMARY KEY,
+        table_name TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        local_payload TEXT,
+        remote_payload TEXT,
+        resolved INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )
+    ''');
   }
 
   /// Close connection
@@ -313,5 +341,12 @@ class DbHelper {
       await db.close();
       _database = null;
     }
+  }
+
+  /// Clears the local database by deleting the file (used on logout/logoff)
+  Future<void> clearDatabase() async {
+    final String path = join(await getDatabasesPath(), 'godown_management.db');
+    await close();
+    await deleteDatabase(path);
   }
 }
