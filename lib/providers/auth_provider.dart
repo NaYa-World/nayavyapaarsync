@@ -3,6 +3,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:uuid/uuid.dart';
 import '../services/auth_service.dart';
+import '../data/database/db_helper.dart';
+import 'settings_provider.dart';
+import '../sync/sync_role_manager.dart';
 
 class AuthState {
   final GoogleSignInAccount? user;
@@ -80,10 +83,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// Logs out of Google
-  Future<void> signOut() async {
+  Future<void> signOut(Ref ref) async {
     state = state.copyWith(isLoading: true);
     try {
       await _authService.signOut();
+      
+      // Clear database
+      await DbHelper().clearDatabase();
+
+      // Clear sync role singleton
+      await SyncRoleManager().clearRole();
+      
+      // Reset settings provider
+      ref.read(settingsProvider.notifier).loadSettings();
+      
       state = state.copyWith(user: null, isLoading: false);
     } catch (e) {
       state = state.copyWith(

@@ -76,9 +76,13 @@ class TransactionNotifier extends StateNotifier<TransactionState> {
   /// Triggers background database sync to GDrive (non-blocking)
   void _triggerBackgroundSync() {
     final deviceId = _ref.read(authProvider).deviceId;
-    SyncQueueService().triggerSync(deviceId).then((_) {
-      // Refresh backup status/badge in the UI
-      _ref.read(backupProvider.notifier).checkUnsyncedStatus();
+    SyncQueueService().triggerSync(deviceId).then((hasChanged) {
+      if (hasChanged) {
+        loadAllTransactions();
+        _refreshDependentStates();
+      } else {
+        _ref.read(backupProvider.notifier).checkUnsyncedStatus();
+      }
     });
   }
 

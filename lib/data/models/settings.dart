@@ -5,6 +5,7 @@ class Settings {
   final String? gstin;
   final String state;
   final String stateCode;
+  final String role; // 'OWNER' or 'ACCOUNTANT'
 
   Settings({
     required this.firmName,
@@ -13,6 +14,7 @@ class Settings {
     this.gstin,
     this.state = 'Telangana',
     this.stateCode = '36',
+    this.role = 'OWNER',
   });
 
   Settings copyWith({
@@ -22,6 +24,7 @@ class Settings {
     String? gstin,
     String? state,
     String? stateCode,
+    String? role,
   }) {
     return Settings(
       firmName: firmName ?? this.firmName,
@@ -30,6 +33,7 @@ class Settings {
       gstin: gstin ?? this.gstin,
       state: state ?? this.state,
       stateCode: stateCode ?? this.stateCode,
+      role: role ?? this.role,
     );
   }
 
@@ -41,6 +45,7 @@ class Settings {
     String? gstin;
     String state = 'Telangana';
     String stateCode = '36';
+    String role = 'OWNER';
 
     for (final row in maps) {
       final key = row['key'] as String;
@@ -64,6 +69,9 @@ class Settings {
         case 'state_code':
           stateCode = val;
           break;
+        case 'role':
+          role = val;
+          break;
       }
     }
 
@@ -74,6 +82,7 @@ class Settings {
       gstin: gstin,
       state: state,
       stateCode: stateCode,
+      role: role,
     );
   }
 
@@ -86,6 +95,7 @@ class Settings {
       'gstin': gstin ?? '',
       'state': state,
       'state_code': stateCode,
+      'role': role,
     };
   }
 
