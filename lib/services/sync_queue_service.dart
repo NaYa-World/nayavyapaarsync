@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../data/database/db_helper.dart';
@@ -26,7 +27,8 @@ class SyncQueueService {
     try {
       final connectivityResult = await Connectivity().checkConnectivity();
       return !connectivityResult.contains(ConnectivityResult.none) && connectivityResult.isNotEmpty;
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('Error checking connectivity: $e\n$stack');
       return false;
     }
   }
@@ -101,7 +103,8 @@ class SyncQueueService {
 
       _isSyncing = false;
       return hasChangesApplied;
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('Error during triggerSync: $e\n$stack');
       _isSyncing = false;
       return false;
     }
@@ -219,7 +222,8 @@ class SyncQueueService {
       await ManifestManager().uploadManifest(manifest);
 
       return true;
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('Error during restoreFromManifest: $e\n$stack');
       return false;
     }
   }
@@ -373,8 +377,8 @@ class SyncQueueService {
 
       // Run safe pruning (only snapshot generator does this!)
       await LogPruner().prune(updatedManifest);
-    } catch (_) {
-      // fail-silent
+    } catch (e, stack) {
+      debugPrint('Error during generateAndUploadSnapshot: $e\n$stack');
     }
   }
 
