@@ -884,8 +884,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                         validator: (val) => val == null ? 'Required' : null,
                                       ),
                                     ),
-                                      ),
-                                    ),
                                     _buildFormRow(
                                       'Manufacturer',
                                       TextFormField(
