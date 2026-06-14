@@ -7,67 +7,96 @@ class SyncApplier {
   /// it halts applying the change for this record, constructs a conflict entry,
   /// and writes it to the `sync_conflicts` table for manual resolution.
   static Future<bool> applyRemoteChange(
-    Database db,
-    String operation,
-    String tableName,
-    String recordId,
-    Map<String, dynamic> remotePayload,
+    DatabaseExecutor db,
+    Map<String, dynamic> remoteEntry,
   ) async {
-    // 1. Check if the local record has unsynced pending changes
-    final isConflicted = await isRecordPendingLocally(db, tableName, recordId);
-    if (isConflicted) {
-      // Fetch local representation of the record
-      final localPayload = await getLocalPayload(db, tableName, recordId);
-      
-      // Log conflict
-      await logConflict(db, tableName, recordId, operation, localPayload, remotePayload);
-      return false; // Did not apply remote change due to conflict
+    final operation = remoteEntry['operation'] as String;
+    final tableName = remoteEntry['table_name'] as String;
+    final recordId = remoteEntry['record_id'] as String;
+    final fieldName = remoteEntry['field_name'] as String? ?? '_full_row';
+    final isResolution = (remoteEntry['is_resolution'] as int? ?? 0) == 1;
+    final deviceRole = remoteEntry['device_role'] as String? ?? 'owner';
+    final newValue = remoteEntry['new_value'] as String?;
+    final remoteTimestamp = remoteEntry['created_at'] as String;
+
+    // Resolution entries — apply unconditionally, SUPERSEDE local pending
+    if (isResolution) {
+      await db.update(
+        'sync_queue',
+        {'status': 'SUPERSEDED'},
+        where: "table_name = ? AND record_id = ? AND field_name = ? AND status = 'PENDING'",
+        whereArgs: [tableName, recordId, fieldName],
+      );
+      if (newValue != null) {
+        await db.update(
+          tableName,
+          {fieldName: newValue},
+          where: 'id = ?',
+          whereArgs: [recordId],
+        );
+      }
+      return true;
     }
 
-    // 2. No conflict, safe to apply
-    await applySyncItem(db, operation, tableName, recordId, remotePayload);
-    return true; // Successfully applied remote change
-  }
+    // Legacy whole-row entries — apply directly, no conflict check
+    if (fieldName == '_full_row') {
+      final payload = remoteEntry['payload'] != null
+          ? jsonDecode(remoteEntry['payload'] as String) as Map<String, dynamic>
+          : <String, dynamic>{};
+      await applySyncItem(db, operation, tableName, recordId, payload);
+      return true;
+    }
 
-  /// Checks if a record has any pending local changes in the sync queue.
-  static Future<bool> isRecordPendingLocally(
-    Database db,
-    String tableName,
-    String recordId,
-  ) async {
-    final List<Map<String, dynamic>> res = await db.query(
+    // CREATE / DELETE — apply directly
+    if (operation == 'CREATE' || operation == 'DELETE') {
+      final payload = remoteEntry['payload'] != null
+          ? jsonDecode(remoteEntry['payload'] as String) as Map<String, dynamic>
+          : <String, dynamic>{};
+      await applySyncItem(db, operation, tableName, recordId, payload);
+      return true;
+    }
+
+    // EDIT — field-level conflict check
+    final localConflict = await db.query(
       'sync_queue',
-      where: "table_name = ? AND record_id = ? AND status = 'PENDING'",
-      whereArgs: [tableName, recordId],
+      where: "table_name = ? AND record_id = ? AND field_name = ? AND status = 'PENDING' AND device_role != ?",
+      whereArgs: [tableName, recordId, fieldName, deviceRole],
     );
-    return res.isNotEmpty;
-  }
 
-  /// Logs a conflict to the sync_conflicts table.
-  static Future<void> logConflict(
-    Database db,
-    String tableName,
-    String recordId,
-    String operation,
-    Map<String, dynamic>? localPayload,
-    Map<String, dynamic> remotePayload,
-  ) async {
-    final conflictId = '${DateTime.now().millisecondsSinceEpoch}_$recordId';
-    await db.insert('sync_conflicts', {
-      'id': conflictId,
-      'table_name': tableName,
-      'record_id': recordId,
-      'operation': operation,
-      'local_payload': localPayload != null ? jsonEncode(localPayload) : null,
-      'remote_payload': jsonEncode(remotePayload),
-      'resolved': 0,
-      'created_at': DateTime.now().toIso8601String(),
-    });
+    if (localConflict.isNotEmpty) {
+      // Conflict — log and halt
+      await db.insert('sync_conflicts', {
+        'id': '${DateTime.now().millisecondsSinceEpoch}_${recordId}_$fieldName',
+        'table_name': tableName,
+        'record_id': recordId,
+        'field_name': fieldName,
+        'local_value': localConflict.first['new_value'],
+        'local_device': localConflict.first['device_role'],
+        'local_timestamp': localConflict.first['created_at'],
+        'remote_value': newValue,
+        'remote_device': deviceRole,
+        'remote_timestamp': remoteTimestamp,
+        'status': 'pending',
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      return false;
+    }
+
+    // No conflict — apply field directly
+    if (newValue != null) {
+      await db.update(
+        tableName,
+        {fieldName: newValue},
+        where: 'id = ?',
+        whereArgs: [recordId],
+      );
+    }
+    return true;
   }
 
   /// Low-level database applying helper.
   static Future<void> applySyncItem(
-    Database db,
+    DatabaseExecutor db,
     String operation,
     String tableName,
     String recordId,
@@ -148,7 +177,7 @@ class SyncApplier {
 
   /// Retrieves the current local payload for a record.
   static Future<Map<String, dynamic>?> getLocalPayload(
-    Database db,
+    DatabaseExecutor db,
     String tableName,
     String recordId,
   ) async {

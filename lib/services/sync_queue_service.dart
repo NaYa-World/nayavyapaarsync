@@ -168,11 +168,40 @@ class SyncQueueService {
             final operation = itemMap['operation'] as String;
             final tableName = itemMap['table_name'] as String;
             final recordId = itemMap['record_id'] as String;
-            final payload = itemMap['payload'] != null
-                ? jsonDecode(itemMap['payload'] as String) as Map<String, dynamic>
-                : <String, dynamic>{};
+            final fieldName = itemMap['field_name'] as String? ?? '_full_row';
+            final newValue = itemMap['new_value'] as String?;
+            final isResolution = (itemMap['is_resolution'] as int? ?? 0) == 1;
 
-            await SyncApplier.applySyncItem(db, operation, tableName, recordId, payload);
+            if (isResolution) {
+              if (newValue != null) {
+                await db.update(
+                  tableName,
+                  {fieldName: newValue},
+                  where: 'id = ?',
+                  whereArgs: [recordId],
+                );
+              }
+            } else if (fieldName == '_full_row') {
+              final payload = itemMap['payload'] != null
+                  ? jsonDecode(itemMap['payload'] as String) as Map<String, dynamic>
+                  : <String, dynamic>{};
+              await SyncApplier.applySyncItem(db, operation, tableName, recordId, payload);
+            } else if (operation == 'CREATE' || operation == 'DELETE') {
+              final payload = itemMap['payload'] != null
+                  ? jsonDecode(itemMap['payload'] as String) as Map<String, dynamic>
+                  : <String, dynamic>{};
+              await SyncApplier.applySyncItem(db, operation, tableName, recordId, payload);
+            } else {
+              // Field-level EDIT
+              if (newValue != null) {
+                await db.update(
+                  tableName,
+                  {fieldName: newValue},
+                  where: 'id = ?',
+                  whereArgs: [recordId],
+                );
+              }
+            }
           }
           final logTs = LogPruner().getLogTimestamp(log.name) ?? watermark;
           if (logTs > maxAppliedTimestamp) {
@@ -236,14 +265,7 @@ class SyncQueueService {
         await db.transaction((txn) async {
           for (final item in itemsList) {
             final itemMap = Map<String, dynamic>.from(item as Map);
-            final operation = itemMap['operation'] as String;
-            final tableName = itemMap['table_name'] as String;
-            final recordId = itemMap['record_id'] as String;
-            final payload = itemMap['payload'] != null
-                ? jsonDecode(itemMap['payload'] as String) as Map<String, dynamic>
-                : <String, dynamic>{};
-
-            await SyncApplier.applyRemoteChange(db, operation, tableName, recordId, payload);
+            await SyncApplier.applyRemoteChange(txn, itemMap);
           }
         });
 
