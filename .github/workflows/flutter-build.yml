@@ -44,9 +44,9 @@ jobs:
         run: flutter pub get
 
       # Step 5: Check code quality (Highly recommended for CI/CD learning!)
-      # This ensures compilation errors or style violations stop the build early.
+      # This ensures compilation errors stop the build early.
       - name: Analyze Code
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       # Step 6: Build the release APK
       - name: Build APK

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/settings.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/settings_provider.dart';
-import '../../../services/ocr_service.dart';
 import '../../../sync/sync_role_manager.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -164,7 +163,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                             );
                             if (confirm == true) {
-                              await ref.read(authProvider.notifier).signOut(ref);
+                              await ref.read(authProvider.notifier).signOut();
                             }
                           },
                         ),
@@ -182,7 +181,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _selectedRole,
+                initialValue: _selectedRole,
                 decoration: const InputDecoration(
                   labelText: 'Device Role / పరికరం పాత్ర *',
                   prefixIcon: Icon(Icons.person_outline_rounded),

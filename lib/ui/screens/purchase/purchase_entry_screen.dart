@@ -11,7 +11,6 @@ import '../../../data/models/item.dart';
 import '../../../data/models/party.dart';
 import '../../../data/models/purchase.dart';
 // import '../../../data/repositories/purchase_repository.dart';
-import '../../../providers/connectivity_provider.dart';
 import '../../../providers/item_provider.dart';
 import '../../../providers/party_provider.dart';
 import '../../../providers/settings_provider.dart';
@@ -498,7 +497,6 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isOnline = ref.watch(isOnlineProvider);
     final suppliers = ref.watch(supplierProvider);
     final itemsData = ref.watch(itemProvider).value ?? [];
     final isEdit = widget.purchaseToEdit != null;
@@ -548,9 +546,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                         children: [
                           // Supplier select
                           DropdownButtonFormField<String>(
-                            value: suppliers.any((p) => p.party.id == _selectedParty?.id)
+                            initialValue: suppliers.any((p) => p.party.id == _selectedParty?.id)
                                 ? _selectedParty?.id
-                                : (_selectedParty != null ? _selectedParty!.id : null),
+                                : (_selectedParty?.id),
                             decoration: InputDecoration(
                               labelText: 'Select Supplier / అమ్మకందారు *',
                               prefixIcon: const Icon(Icons.person_rounded),
@@ -689,7 +687,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: DropdownButtonFormField<String>(
-                                      value: itemsData.any((i) => i.item.id == row.selectedItem?.id && i.item.category == _currentCategory)
+                                      initialValue: itemsData.any((i) => i.item.id == row.selectedItem?.id && i.item.category == _currentCategory)
                                           ? row.selectedItem?.id
                                           : null,
                                       hint: const Text('Select Variety / సరుకును ఎంచుకోండి'),
@@ -759,7 +757,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                   // Manufacturer Dropdown
                                   Expanded(
                                     child: DropdownButtonFormField<String>(
-                                      value: _manufacturersList.contains(row.manufacturerController.text)
+                                      initialValue: _manufacturersList.contains(row.manufacturerController.text)
                                           ? row.manufacturerController.text
                                           : (row.manufacturerController.text.isNotEmpty ? row.manufacturerController.text : null),
                                       hint: const Text('Manufacturer'),
@@ -846,7 +844,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                   // Per Unit (Dropdown)
                                   Expanded(
                                     child: DropdownButtonFormField<String>(
-                                      value: row.perUnit,
+                                      initialValue: row.perUnit,
                                       decoration: const InputDecoration(
                                         labelText: 'Per Unit',
                                         contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -957,7 +955,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                   // GST
                                   Expanded(
                                     child: DropdownButtonFormField<double>(
-                                      value: row.gstRate,
+                                      initialValue: row.gstRate,
                                       decoration: InputDecoration(
                                         labelText: 'GST %',
                                         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -1117,7 +1115,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: DropdownButtonFormField<String>(
-                        value: _paymentStatus,
+                        initialValue: _paymentStatus,
                         decoration: const InputDecoration(
                           labelText: 'Payment Status / చెల్లింపు స్థితి',
                           prefixIcon: Icon(Icons.payment_rounded),
