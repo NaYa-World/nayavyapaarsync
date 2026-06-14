@@ -48,13 +48,14 @@ jobs:
       - name: Analyze Code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      # Step 6: Build the release APK
+      # Step 6: Build the release APK ( change debug to release)
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --debug
+      # Step 6: Build the debug APK (great for easy testing/installation)
 
       # Step 7: Upload the generated APK so you can download it from the GitHub page
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: flutter-app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: flutter-app-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
