@@ -265,11 +265,11 @@ class _RecycleBinScreenState extends ConsumerState<RecycleBinScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.delete_outline_rounded, size: 64, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.4)),
+                  Icon(Icons.delete_outline_rounded, size: 64, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
                   const SizedBox(height: 16),
                   Text(
                     'Recycle bin is empty.',
-                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                   ),
                   const SizedBox(height: 8),
                   const Padding(
@@ -298,7 +298,7 @@ class _RecycleBinScreenState extends ConsumerState<RecycleBinScreen> {
                   child: Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: theme.colorScheme.errorContainer.withOpacity(0.5),
+                        backgroundColor: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
                         foregroundColor: theme.colorScheme.error,
                         child: const Icon(Icons.delete_rounded),
                       ),

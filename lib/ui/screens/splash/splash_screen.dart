@@ -113,7 +113,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              theme.colorScheme.primary.withOpacity(0.9),
+              theme.colorScheme.primary.withValues(alpha: 0.9),
               theme.colorScheme.primary,
               theme.colorScheme.primaryContainer,
             ],

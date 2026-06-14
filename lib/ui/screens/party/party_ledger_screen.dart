@@ -117,7 +117,7 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> with Sing
       return Center(
         child: Text(
           _searchQuery.isEmpty ? 'No parties registered.' : 'No matching parties found.',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
         ),
       );
     }
@@ -286,7 +286,7 @@ class _PartyFormDialogState extends ConsumerState<PartyFormDialog> {
               const SizedBox(height: 12),
 
               DropdownButtonFormField<String>(
-                value: _type,
+                initialValue: _type,
                 decoration: const InputDecoration(labelText: 'Account Type / ఖాతా రకం'),
                 items: const [
                   DropdownMenuItem(value: 'CUSTOMER', child: Text('CUSTOMER (కొనుగోలుదారు)')),
@@ -338,7 +338,7 @@ class _PartyFormDialogState extends ConsumerState<PartyFormDialog> {
               const SizedBox(height: 12),
 
               DropdownButtonFormField<String>(
-                value: _balanceType,
+                initialValue: _balanceType,
                 decoration: const InputDecoration(labelText: 'Balance Sign / నిల్వ గుర్తు'),
                 items: const [
                   DropdownMenuItem(value: 'DR', child: Text('DR (Debit/Receivable)')),

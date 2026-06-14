@@ -45,7 +45,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
     }
 
     if (conditions.isNotEmpty) {
-      query += ' WHERE ' + conditions.join(' AND ');
+      query += ' WHERE ${conditions.join(' AND ')}';
     }
 
     query += ' ORDER BY timestamp DESC';
@@ -78,7 +78,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedAction,
+                      initialValue: _selectedAction,
                       decoration: const InputDecoration(labelText: 'Action', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
                       items: const [
                         DropdownMenuItem(value: 'ALL', child: Text('All Actions')),
@@ -99,7 +99,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedTable,
+                      initialValue: _selectedTable,
                       decoration: const InputDecoration(labelText: 'Register', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
                       items: const [
                         DropdownMenuItem(value: 'ALL', child: Text('All Registers')),
@@ -144,7 +144,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                   return Center(
                     child: Text(
                       'No audit logs found.',
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                     ),
                   );
                 }
@@ -218,7 +218,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
     }
 
     return Table(
-      border: TableBorder.all(color: theme.colorScheme.onSurface.withOpacity(0.12), width: 0.5),
+      border: TableBorder.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.12), width: 0.5),
       columnWidths: const {
         0: FlexColumnWidth(1.2), // Key
         1: FlexColumnWidth(2.0), // Old
@@ -227,7 +227,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
       children: [
         // Table Header
         TableRow(
-          decoration: BoxDecoration(color: theme.colorScheme.surfaceVariant.withOpacity(0.4)),
+          decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4)),
           children: const [
             Padding(padding: EdgeInsets.all(6), child: Text('Field', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10))),
             Padding(padding: EdgeInsets.all(6), child: Text('Old Value', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10))),
@@ -241,7 +241,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
           final isChanged = oldVal != newVal;
 
           return TableRow(
-            decoration: isChanged ? BoxDecoration(color: Colors.amber.withOpacity(0.06)) : null,
+            decoration: isChanged ? BoxDecoration(color: Colors.amber.withValues(alpha: 0.06)) : null,
             children: [
               Padding(
                 padding: const EdgeInsets.all(6),

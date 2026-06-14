@@ -82,7 +82,7 @@ class AppTheme {
       elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withOpacity(0.08), width: 1),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.08), width: 1),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
@@ -96,7 +96,7 @@ class AppTheme {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white.withOpacity(0.05),
+      fillColor: Colors.white.withValues(alpha: 0.05),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,

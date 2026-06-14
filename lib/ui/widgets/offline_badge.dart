@@ -14,9 +14,9 @@ class OfflineBadge extends ConsumerWidget {
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.15),
+          color: Colors.green.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.green.withOpacity(0.4), width: 1),
+          border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -46,9 +46,9 @@ class OfflineBadge extends ConsumerWidget {
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.orange.withOpacity(0.15),
+          color: Colors.orange.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.orange.withOpacity(0.5), width: 1),
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.5), width: 1),
         ),
         child: const Row(
           mainAxisSize: MainAxisSize.min,

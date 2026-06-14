@@ -46,7 +46,7 @@ class UnitDisplay extends StatelessWidget {
         const TextStyle(fontWeight: FontWeight.bold);
 
     final TextStyle defaultSecondary = theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
         ) ??
         const TextStyle(color: Colors.grey, fontSize: 11);
 

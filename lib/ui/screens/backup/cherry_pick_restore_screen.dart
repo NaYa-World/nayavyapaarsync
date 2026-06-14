@@ -4,8 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../data/models/item.dart';
 import '../../../data/models/party.dart';
-import '../../../data/repositories/item_repository.dart';
-import '../../../data/repositories/party_repository.dart';
 import '../../../providers/item_provider.dart';
 import '../../../providers/party_provider.dart';
 
@@ -272,7 +270,7 @@ class _CherryPickRestoreScreenState extends ConsumerState<CherryPickRestoreScree
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
+                    color: statusColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -335,7 +333,7 @@ class _CherryPickRestoreScreenState extends ConsumerState<CherryPickRestoreScree
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
+                    color: statusColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(

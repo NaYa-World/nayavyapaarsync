@@ -5,7 +5,6 @@ import 'package:uuid/uuid.dart';
 import '../../../core/utils/indian_format.dart';
 import '../../../data/models/party.dart';
 import '../../../data/models/payment.dart';
-import '../../../data/repositories/payment_repository.dart';
 import '../../../providers/party_provider.dart';
 import '../../../providers/transaction_provider.dart';
 
@@ -66,7 +65,7 @@ class _PaymentViewScreenState extends ConsumerState<PaymentViewScreen> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<Party?>(
-                    value: _filterParty,
+                    initialValue: _filterParty,
                     decoration: const InputDecoration(
                       labelText: 'Filter by Party / ఖాతాదారుని వడపోత',
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -103,7 +102,7 @@ class _PaymentViewScreenState extends ConsumerState<PaymentViewScreen> {
                 ? Center(
                     child: Text(
                       'No payments recorded.',
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                     ),
                   )
                 : ListView.builder(
@@ -133,7 +132,7 @@ class _PaymentViewScreenState extends ConsumerState<PaymentViewScreen> {
                       return Card(
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: color.withOpacity(0.1),
+                            backgroundColor: color.withValues(alpha: 0.1),
                             foregroundColor: color,
                             child: Icon(
                               isReceived ? Icons.call_received_rounded : Icons.call_made_rounded,
@@ -313,7 +312,7 @@ class _AddPaymentDialogState extends ConsumerState<AddPaymentDialog> {
             children: [
               // Party Dropdown
               DropdownButtonFormField<Party>(
-                value: _selectedParty,
+                initialValue: _selectedParty,
                 decoration: const InputDecoration(labelText: 'Select Party *'),
                 items: parties.map((p) {
                   return DropdownMenuItem(
@@ -334,7 +333,7 @@ class _AddPaymentDialogState extends ConsumerState<AddPaymentDialog> {
 
               // Direction
               DropdownButtonFormField<String>(
-                value: _direction,
+                initialValue: _direction,
                 decoration: const InputDecoration(labelText: 'Transaction Direction'),
                 items: const [
                   DropdownMenuItem(value: 'RECEIVED', child: Text('RECEIVED (వసూలు - Customer)')),
@@ -361,7 +360,7 @@ class _AddPaymentDialogState extends ConsumerState<AddPaymentDialog> {
 
               // Mode
               DropdownButtonFormField<String>(
-                value: _mode,
+                initialValue: _mode,
                 decoration: const InputDecoration(labelText: 'Payment Mode / చెల్లింపు విధానం'),
                 items: const [
                   DropdownMenuItem(value: 'CASH', child: Text('CASH (నగదు)')),
