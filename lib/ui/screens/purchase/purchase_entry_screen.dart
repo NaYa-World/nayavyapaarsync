@@ -20,6 +20,7 @@ import '../../../services/ocr_service.dart';
 import '../../widgets/gst_row.dart';
 import '../stock/stock_register_screen.dart';
 import '../party/party_ledger_screen.dart';
+import 'purchase_preview_screen.dart';
 
 class PurchaseEntryScreen extends ConsumerStatefulWidget {
   final Purchase? purchaseToEdit;
@@ -50,6 +51,33 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
 
   // Low confidence highlights from OCR
   final Map<String, bool> _uncertainFields = {}; // fieldName -> isUncertain
+
+  TableRow _buildFormRow(String label, Widget inputWidget) {
+    return TableRow(
+      children: [
+        TableCell(
+          verticalAlignment: TableCellVerticalAlignment.middle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+        TableCell(
+          verticalAlignment: TableCellVerticalAlignment.middle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            child: inputWidget,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   void initState() {
@@ -475,22 +503,17 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       ));
     }
 
-    try {
-      if (isEdit) {
-        await ref.read(transactionProvider.notifier).editPurchase(purchase, itemsList);
-      } else {
-        await ref.read(transactionProvider.notifier).addPurchase(purchase, itemsList);
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Purchase saved successfully!'), backgroundColor: Colors.green),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save purchase: ${e.toString()}'), backgroundColor: Colors.red),
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PurchasePreviewScreen(
+            purchase: purchase,
+            items: itemsList,
+            party: _selectedParty!,
+            isEdit: isEdit,
+          ),
+        ),
       );
     }
   }
@@ -678,24 +701,50 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // 1. Header Row (Index, Variety/Item Dropdown, Add variety button, delete button)
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  CircleAvatar(
-                                    radius: 12,
-                                    backgroundColor: theme.colorScheme.secondaryContainer,
-                                    child: Text('${index + 1}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                  Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 12,
+                                        backgroundColor: theme.colorScheme.secondaryContainer,
+                                        child: Text('${index + 1}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Item Row #${index + 1}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                                    onPressed: () => _removeItemRow(index),
+                                  ),
+                                ],
+                              ),
+                              const Divider(),
+                              const SizedBox(height: 8),
+                              Table(
+                                columnWidths: const {
+                                  0: FlexColumnWidth(1.2),
+                                  1: FlexColumnWidth(2.0),
+                                },
+                                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                                children: [
+                                  _buildFormRow(
+                                    'Variety / సరుకు *',
+                                    DropdownButtonFormField<String>(
                                       value: itemsData.any((i) => i.item.id == row.selectedItem?.id && i.item.category == _currentCategory)
                                           ? row.selectedItem?.id
                                           : null,
-                                      hint: const Text('Select Variety / సరుకును ఎంచుకోండి'),
+                                      hint: const Text('Select Variety'),
                                       decoration: InputDecoration(
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: const OutlineInputBorder(),
                                         fillColor: _uncertainFields['${rowPrefix}_name'] == true ? Colors.yellow.shade100 : null,
+                                        filled: _uncertainFields['${rowPrefix}_name'] == true,
                                         helperText: row.selectedItem == null && row.scannedItemName != null ? 'Scanned: ${row.scannedItemName}' : null,
                                         helperStyle: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.bold, fontSize: 10),
                                       ),
@@ -745,27 +794,16 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                       },
                                     ),
                                   ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                                    onPressed: () => _removeItemRow(index),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Manufacturer & Packing Row
-                              Row(
-                                children: [
-                                  // Manufacturer Dropdown
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
+                                  _buildFormRow(
+                                    'Manufacturer *',
+                                    DropdownButtonFormField<String>(
                                       value: _manufacturersList.contains(row.manufacturerController.text)
                                           ? row.manufacturerController.text
                                           : (row.manufacturerController.text.isNotEmpty ? row.manufacturerController.text : null),
-                                      hint: const Text('Manufacturer'),
+                                      hint: const Text('Select Manufacturer'),
                                       decoration: const InputDecoration(
-                                        labelText: 'Manufacturer / Company *',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       items: [
                                         ..._manufacturersList.map((m) => DropdownMenuItem(
@@ -800,56 +838,49 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                       },
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // Packing
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'Packing *',
+                                    TextFormField(
                                       controller: row.packingController,
                                       decoration: const InputDecoration(
-                                        labelText: 'Packing (e.g. 475 g, 10 kg) *',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        hintText: 'e.g. 475 g, 10 kg',
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              // 2. Row 1 (Lot / Batch No, HSN Code, Per Unit)
-                              Row(
-                                children: [
-                                  // Lot/Batch Number
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'Lot / Batch No *',
+                                    TextFormField(
                                       controller: row.lotNoController,
                                       decoration: const InputDecoration(
-                                        labelText: 'Lot / Batch No *',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        hintText: 'Lot number',
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // HSN Code
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'HSN Code *',
+                                    TextFormField(
                                       controller: row.hsnCodeController,
                                       decoration: const InputDecoration(
-                                        labelText: 'HSN Code *',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        hintText: 'HSN Code',
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // Per Unit (Dropdown)
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
+                                  _buildFormRow(
+                                    'Per Unit *',
+                                    DropdownButtonFormField<String>(
                                       value: row.perUnit,
                                       decoration: const InputDecoration(
-                                        labelText: 'Per Unit',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       items: const [
                                         DropdownMenuItem(value: 'kgs', child: Text('kgs')),
@@ -866,48 +897,43 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                       },
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              // 3. Row 2 (No. of Packets, No. of Bags, Total Qty)
-                              Row(
-                                children: [
-                                  // No. of Packets
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'No. of Pkts',
+                                    TextFormField(
                                       controller: row.noOfPktsController,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       decoration: const InputDecoration(
-                                        labelText: 'No. of Pkts',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        hintText: 'Packets count',
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       onChanged: (val) => setState(() {}),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // No. of Bags
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'No. of Bags',
+                                    TextFormField(
                                       controller: row.noOfBagsController,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       decoration: const InputDecoration(
-                                        labelText: 'No. of Bags',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        hintText: 'Bags count',
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       onChanged: (val) => setState(() {}),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // Total Quantity (totalQty)
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'Total Qty (${row.perUnit}) *',
+                                    TextFormField(
                                       controller: row.totalQtyController,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       decoration: InputDecoration(
-                                        labelText: 'Total Qty (${row.perUnit}) *',
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        hintText: 'Total quantity',
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: const OutlineInputBorder(),
                                         fillColor: _uncertainFields['${rowPrefix}_qty'] == true ? Colors.yellow.shade100 : null,
+                                        filled: _uncertainFields['${rowPrefix}_qty'] == true,
                                       ),
                                       onChanged: (val) {
                                         _uncertainFields.remove('${rowPrefix}_qty');
@@ -916,22 +942,17 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                       validator: (val) => val == null || double.tryParse(val) == null ? 'Invalid' : null,
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              // 4. Row 3 (Rate, Discount %, GST %)
-                              Row(
-                                children: [
-                                  // Rate
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'Rate *',
+                                    TextFormField(
                                       controller: row.rateController,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       decoration: InputDecoration(
-                                        labelText: 'Rate *',
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        hintText: 'Rate per unit',
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: const OutlineInputBorder(),
                                         fillColor: _uncertainFields['${rowPrefix}_rate'] == true ? Colors.yellow.shade100 : null,
+                                        filled: _uncertainFields['${rowPrefix}_rate'] == true,
                                       ),
                                       onChanged: (val) {
                                         _uncertainFields.remove('${rowPrefix}_rate');
@@ -940,28 +961,28 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                       validator: (val) => val == null || double.tryParse(val) == null ? 'Invalid' : null,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // Discount (%)
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'Discount (%)',
+                                    TextFormField(
                                       controller: row.discountPctController,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       decoration: const InputDecoration(
-                                        labelText: 'Discount (%)',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        hintText: 'Discount percentage',
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       onChanged: (val) => setState(() {}),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // GST
-                                  Expanded(
-                                    child: DropdownButtonFormField<double>(
+                                  _buildFormRow(
+                                    'GST % *',
+                                    DropdownButtonFormField<double>(
                                       value: row.gstRate,
                                       decoration: InputDecoration(
-                                        labelText: 'GST %',
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: const OutlineInputBorder(),
                                         fillColor: _uncertainFields['${rowPrefix}_gst'] == true ? Colors.yellow.shade100 : null,
+                                        filled: _uncertainFields['${rowPrefix}_gst'] == true,
                                       ),
                                       items: const [
                                         DropdownMenuItem(value: 0.0, child: Text('0%')),
@@ -979,22 +1000,16 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                       },
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              // 5. Row 4 (Mfg Date, Exp Date)
-                              Row(
-                                children: [
-                                  // Mfg Date
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'Mfg Date',
+                                    TextFormField(
                                       controller: row.mfgDateController,
                                       readOnly: true,
                                       decoration: const InputDecoration(
-                                        labelText: 'Mfg Date',
+                                        hintText: 'Select mfg date',
                                         prefixIcon: Icon(Icons.date_range_rounded, size: 18),
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       onTap: () async {
                                         final date = await showDatePicker(
@@ -1011,16 +1026,16 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                       },
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // Exp Date
-                                  Expanded(
-                                    child: TextFormField(
+                                  _buildFormRow(
+                                    'Expiry Date',
+                                    TextFormField(
                                       controller: row.expDateController,
                                       readOnly: true,
                                       decoration: const InputDecoration(
-                                        labelText: 'Expiry Date',
+                                        hintText: 'Select expiry date',
                                         prefixIcon: Icon(Icons.event_busy_rounded, size: 18),
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(),
                                       ),
                                       onTap: () async {
                                         final date = await showDatePicker(
@@ -1040,8 +1055,6 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-
-                              // Live calculations summary
                               Builder(
                                 builder: (context) {
                                   final double qty = double.tryParse(row.totalQtyController.text) ?? 0.0;
@@ -1142,7 +1155,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                   // Save Button
                   ElevatedButton(
                     onPressed: _saveInvoice,
-                    child: Text(isEdit ? 'Save Changes' : 'Confirm & Save Purchase'),
+                    child: Text(isEdit ? 'Preview Changes PDF' : 'Preview Purchase PDF'),
                   ),
                 ],
               ),
