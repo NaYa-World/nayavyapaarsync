@@ -6,7 +6,7 @@ import '../../../data/models/item.dart';
 import '../../../data/repositories/item_repository.dart';
 import '../../../providers/item_provider.dart';
 import '../../widgets/unit_display.dart';
-import '../purchase/purchase_entry_screen.dart'; // We could push to view invoices if we want, but simple details suffice.
+// We could push to view invoices if we want, but simple details suffice.
 
 class StockMovementScreen extends ConsumerStatefulWidget {
   final Item item;
@@ -64,11 +64,11 @@ class _StockMovementScreenState extends ConsumerState<StockMovementScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.history_rounded, size: 64, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.4)),
+                  Icon(Icons.history_rounded, size: 64, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
                   const SizedBox(height: 16),
                   Text(
                     'No stock movements recorded.',
-                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                   ),
                 ],
               ),
@@ -83,13 +83,13 @@ class _StockMovementScreenState extends ConsumerState<StockMovementScreen> {
               // Header Summary Card
               Card(
                 margin: const EdgeInsets.all(16),
-                color: theme.colorScheme.primaryContainer.withOpacity(0.2),
+                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
+                        backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
                         foregroundColor: theme.colorScheme.primary,
                         radius: 28,
                         child: const Icon(Icons.inventory_rounded, size: 28),
@@ -157,7 +157,7 @@ class _StockMovementScreenState extends ConsumerState<StockMovementScreen> {
                           children: [
                             // Icon indicator
                             CircleAvatar(
-                              backgroundColor: color.withOpacity(0.1),
+                              backgroundColor: color.withValues(alpha: 0.1),
                               foregroundColor: color,
                               radius: 18,
                               child: Icon(
@@ -180,14 +180,14 @@ class _StockMovementScreenState extends ConsumerState<StockMovementScreen> {
                                     '${mv.invoiceNo} | ${DateFormat('dd-MMM-yyyy').format(mv.date)}',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+                                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                     ),
                                   ),
                                   Text(
                                     'Rate: ${IndianFormatUtils.formatCurrency(mv.rate)}',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+                                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                     ),
                                   ),
                                 ],
@@ -214,7 +214,7 @@ class _StockMovementScreenState extends ConsumerState<StockMovementScreen> {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w500,
-                                    color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+                                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                                   ),
                                 ),
                               ],

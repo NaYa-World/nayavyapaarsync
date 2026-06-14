@@ -172,7 +172,7 @@ class _BackupSettingsScreenState extends ConsumerState<BackupSettingsScreen> {
                           Row(
                             children: [
                               CircleAvatar(
-                                backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
+                                backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
                                 foregroundColor: theme.colorScheme.primary,
                                 radius: 24,
                                 child: const Icon(Icons.cloud_upload_rounded),
@@ -207,10 +207,10 @@ class _BackupSettingsScreenState extends ConsumerState<BackupSettingsScreen> {
 
                   // Retention policy card
                   Card(
-                    color: theme.colorScheme.secondaryContainer.withOpacity(0.2),
+                    color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.2),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: theme.colorScheme.secondary.withOpacity(0.1)),
+                      side: BorderSide(color: theme.colorScheme.secondary.withValues(alpha: 0.1)),
                     ),
                     child: const Padding(
                       padding: EdgeInsets.all(16),
@@ -248,7 +248,7 @@ class _BackupSettingsScreenState extends ConsumerState<BackupSettingsScreen> {
                           Row(
                             children: [
                               CircleAvatar(
-                                backgroundColor: Colors.teal.withOpacity(0.12),
+                                backgroundColor: Colors.teal.withValues(alpha: 0.12),
                                 foregroundColor: Colors.teal,
                                 radius: 24,
                                 child: const Icon(Icons.import_export_rounded),
@@ -302,7 +302,7 @@ class _BackupSettingsScreenState extends ConsumerState<BackupSettingsScreen> {
                         child: Text(
                           'No backups found on Google Drive. Pull to refresh.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                          style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                         ),
                       ),
                     )
@@ -320,7 +320,7 @@ class _BackupSettingsScreenState extends ConsumerState<BackupSettingsScreen> {
                         return Card(
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: theme.colorScheme.secondaryContainer.withOpacity(0.6),
+                              backgroundColor: theme.colorScheme.secondaryContainer.withValues(alpha: 0.6),
                               foregroundColor: theme.colorScheme.secondary,
                               child: const Icon(Icons.inventory_2_rounded, size: 18),
                             ),

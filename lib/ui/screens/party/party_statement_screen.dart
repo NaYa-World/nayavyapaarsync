@@ -176,7 +176,7 @@ class _PartyStatementScreenState extends ConsumerState<PartyStatementScreen> {
 
               // Ledger Table Header
               Container(
-                color: theme.colorScheme.primary.withOpacity(0.08),
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: const Row(
                   children: [

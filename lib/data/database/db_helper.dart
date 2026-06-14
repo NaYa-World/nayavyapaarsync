@@ -22,7 +22,7 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     return await openDatabase(
       path,
-      version: 4,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -86,6 +86,107 @@ class DbHelper {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           is_deleted INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+    }
+    if (oldVersion < 5) {
+      await db.execute('''
+        CREATE TABLE sync_conflicts (
+          id TEXT PRIMARY KEY,
+          table_name TEXT NOT NULL,
+          record_id TEXT NOT NULL,
+          operation TEXT NOT NULL,
+          local_payload TEXT,
+          remote_payload TEXT,
+          resolved INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
+        )
+      ''');
+    }
+    if (oldVersion < 6) {
+      // Guard: create sync_queue if upgrading from before it existed
+      // Check if table exists first — do not assume _onCreate ran it
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='sync_queue'"
+      );
+      
+      if (tables.isEmpty) {
+        // Device upgraded from a version before sync_queue existed
+        await db.execute('''
+          CREATE TABLE sync_queue (
+            id TEXT PRIMARY KEY,
+            operation TEXT CHECK(operation IN ('CREATE','EDIT','DELETE')) NOT NULL,
+            table_name TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            payload TEXT,
+            created_at TEXT NOT NULL,
+            status TEXT CHECK(status IN ('PENDING','DONE','FAILED','SUPERSEDED')) NOT NULL
+          )
+        ''');
+      } else {
+        // Table exists — just add new columns
+        // SQLite ALTER ADD COLUMN cannot add NOT NULL without DEFAULT
+        // All defaults below are intentional
+        await db.execute(
+          "ALTER TABLE sync_queue ADD COLUMN field_name TEXT DEFAULT '_full_row'"
+        );
+        await db.execute(
+          "ALTER TABLE sync_queue ADD COLUMN old_value TEXT DEFAULT NULL"
+        );
+        await db.execute(
+          "ALTER TABLE sync_queue ADD COLUMN new_value TEXT DEFAULT NULL"
+        );
+        await db.execute(
+          "ALTER TABLE sync_queue ADD COLUMN device_role TEXT DEFAULT 'owner'"
+        );
+        await db.execute(
+          "ALTER TABLE sync_queue ADD COLUMN is_resolution INTEGER DEFAULT 0"
+        );
+        // Cannot ALTER CHECK constraint in SQLite
+        // SUPERSEDED handled in query logic, not enforced at DB level
+      }
+    }
+
+    if (oldVersion < 7) {
+      // Drop old whole-row conflict table — data is not migrated
+      // Old conflicts are unresolvable with new field-level schema
+      // Log this drop so users know pending conflicts were cleared
+      await db.execute('DROP TABLE IF EXISTS sync_conflicts');
+      
+      await db.execute('''
+        CREATE TABLE sync_conflicts (
+          id TEXT PRIMARY KEY,
+          table_name TEXT NOT NULL,
+          record_id TEXT NOT NULL,
+          field_name TEXT NOT NULL,
+          local_value TEXT NOT NULL,
+          local_device TEXT NOT NULL,
+          local_timestamp TEXT NOT NULL,
+          remote_value TEXT NOT NULL,
+          remote_device TEXT NOT NULL,
+          remote_timestamp TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK(status IN ('pending', 'resolved', 'superseded')),
+          resolved_value TEXT,
+          resolved_by TEXT,
+          resolved_at TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE conflict_audit_log (
+          id TEXT PRIMARY KEY,
+          conflict_id TEXT NOT NULL,
+          table_name TEXT NOT NULL,
+          record_id TEXT NOT NULL,
+          field_name TEXT NOT NULL,
+          winning_value TEXT,
+          losing_value TEXT,
+          resolved_by TEXT NOT NULL,
+          resolved_at TEXT NOT NULL,
+          resolution_source TEXT NOT NULL
+            CHECK(resolution_source IN ('local', 'remote_sync'))
         )
       ''');
     }
@@ -269,12 +370,19 @@ class DbHelper {
     await db.execute('''
       CREATE TABLE sync_queue (
         id TEXT PRIMARY KEY,
-        operation TEXT CHECK(operation IN ('CREATE', 'EDIT', 'DELETE')) NOT NULL,
+        operation TEXT CHECK(operation IN ('CREATE','EDIT','DELETE')) NOT NULL,
         table_name TEXT NOT NULL,
         record_id TEXT NOT NULL,
+        field_name TEXT DEFAULT '_full_row',
+        old_value TEXT,
+        new_value TEXT,
         payload TEXT,
         created_at TEXT NOT NULL,
-        status TEXT CHECK(status IN ('PENDING', 'DONE', 'FAILED')) NOT NULL DEFAULT 'PENDING'
+        device_role TEXT DEFAULT 'owner',
+        is_resolution INTEGER DEFAULT 0,
+        status TEXT CHECK(
+          status IN ('PENDING','DONE','FAILED','SUPERSEDED')
+        ) NOT NULL DEFAULT 'PENDING'
       )
     ''');
 
@@ -304,6 +412,45 @@ class DbHelper {
     // Prepopulate default settings
     await db.insert('settings', {'key': 'state', 'value': 'Telangana'});
     await db.insert('settings', {'key': 'state_code', 'value': '36'});
+
+    // 13. Sync Conflicts table
+    await db.execute('''
+      CREATE TABLE sync_conflicts (
+        id TEXT PRIMARY KEY,
+        table_name TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        field_name TEXT NOT NULL,
+        local_value TEXT NOT NULL,
+        local_device TEXT NOT NULL,
+        local_timestamp TEXT NOT NULL,
+        remote_value TEXT NOT NULL,
+        remote_device TEXT NOT NULL,
+        remote_timestamp TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK(status IN ('pending', 'resolved', 'superseded')),
+        resolved_value TEXT,
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    // 14. Conflict Audit Log table
+    await db.execute('''
+      CREATE TABLE conflict_audit_log (
+        id TEXT PRIMARY KEY,
+        conflict_id TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        field_name TEXT NOT NULL,
+        winning_value TEXT,
+        losing_value TEXT,
+        resolved_by TEXT NOT NULL,
+        resolved_at TEXT NOT NULL,
+        resolution_source TEXT NOT NULL
+          CHECK(resolution_source IN ('local', 'remote_sync'))
+      )
+    ''');
   }
 
   /// Close connection
@@ -313,5 +460,12 @@ class DbHelper {
       await db.close();
       _database = null;
     }
+  }
+
+  /// Clears the local database by deleting the file (used on logout/logoff)
+  Future<void> clearDatabase() async {
+    final String path = join(await getDatabasesPath(), 'godown_management.db');
+    await close();
+    await deleteDatabase(path);
   }
 }

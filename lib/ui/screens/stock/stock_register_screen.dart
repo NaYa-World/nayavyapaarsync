@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/utils/indian_format.dart';
 import '../../../data/models/item.dart';
 import '../../../providers/item_provider.dart';
 import '../../widgets/unit_display.dart';
@@ -86,7 +85,7 @@ class _StockRegisterScreenState extends ConsumerState<StockRegisterScreen> {
                   return Center(
                     child: Text(
                       _searchQuery.isEmpty ? 'No items in inventory.' : 'No matching items found.',
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                     ),
                   );
                 }
@@ -121,7 +120,7 @@ class _StockRegisterScreenState extends ConsumerState<StockRegisterScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: Colors.red.withOpacity(0.12),
+                                  color: Colors.red.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Text(
@@ -135,7 +134,7 @@ class _StockRegisterScreenState extends ConsumerState<StockRegisterScreen> {
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             'Category: ${item.category} | HSN: ${item.hsnCode} | GST: ${item.gstRate.toInt()}%',
-                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8)),
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
                           ),
                         ),
                         trailing: Row(
@@ -335,7 +334,7 @@ class _ItemFormDialogState extends ConsumerState<ItemFormDialog> {
               const SizedBox(height: 12),
 
               DropdownButtonFormField<String>(
-                value: _category,
+                initialValue: _category,
                 decoration: const InputDecoration(labelText: 'Category / విభాగం'),
                 items: const [
                   DropdownMenuItem(value: 'SEED', child: Text('SEED (విత్తనాలు)')),
@@ -358,7 +357,7 @@ class _ItemFormDialogState extends ConsumerState<ItemFormDialog> {
               ],
 
               DropdownButtonFormField<double>(
-                value: _gstRate,
+                initialValue: _gstRate,
                 decoration: const InputDecoration(labelText: 'GST Rate (%)'),
                 items: const [
                   DropdownMenuItem(value: 0.0, child: Text('0% (Exempt)')),
@@ -384,7 +383,7 @@ class _ItemFormDialogState extends ConsumerState<ItemFormDialog> {
               const SizedBox(height: 12),
 
               DropdownButtonFormField<String>(
-                value: _unit,
+                initialValue: _unit,
                 decoration: const InputDecoration(labelText: 'Primary Unit / కొలమానం'),
                 items: const [
                   DropdownMenuItem(value: 'BAG', child: Text('BAG (సంచి)')),

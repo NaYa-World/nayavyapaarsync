@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:intl/intl.dart';
@@ -233,6 +232,7 @@ class OcrService {
 
       double qty = 1.0;
       double rate = 0.0;
+      // ignore: unused_local_variable
       double total = 0.0;
       double gstRate = 5.0; // default standard
 

@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/indian_format.dart';
 import '../../../data/models/party.dart';
-import '../../../data/repositories/party_repository.dart';
 import '../../../providers/item_provider.dart';
 import '../../../providers/party_provider.dart';
 import '../../../providers/transaction_provider.dart';
@@ -86,7 +85,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               child: Column(
                 children: [
                   DropdownButtonFormField<String>(
-                    value: _selectedReportType,
+                    initialValue: _selectedReportType,
                     decoration: const InputDecoration(
                       labelText: 'Select Report Type / నివేదిక రకం',
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -479,7 +478,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ? Center(
                     child: Text(
                       'No entries match date criteria.',
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                     ),
                   )
                 : Card(
@@ -497,7 +496,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                             }),
                             // Totals Row
                             DataRow(
-                              color: MaterialStateProperty.all(theme.colorScheme.primaryContainer.withOpacity(0.2)),
+                              color: WidgetStateProperty.all(theme.colorScheme.primaryContainer.withValues(alpha: 0.2)),
                               cells: totalsRow.map((cell) => DataCell(Text(cell, style: const TextStyle(fontWeight: FontWeight.bold)))).toList(),
                             ),
                           ],

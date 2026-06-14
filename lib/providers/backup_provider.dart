@@ -1,10 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/backup_meta.dart';
 import '../data/repositories/backup_repository.dart';
-import '../services/backup_service.dart';
 import '../services/gdrive_service.dart';
 import '../services/sync_queue_service.dart';
 import 'auth_provider.dart';
+import 'transaction_provider.dart';
+import 'item_provider.dart';
+import 'party_provider.dart';
 
 class BackupState {
   final List<GDriveFileMeta> backups;
@@ -38,7 +40,6 @@ final backupRepositoryProvider = Provider<BackupRepository>((ref) => BackupRepos
 
 class BackupNotifier extends StateNotifier<BackupState> {
   final BackupRepository _repository;
-  final BackupService _backupService = BackupService();
   final GDriveService _gdriveService = GDriveService();
   final Ref _ref;
 
@@ -77,7 +78,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
 
     state = state.copyWith(isLoading: true);
     try {
-      final list = await _gdriveService.listBackups();
+      final list = await _gdriveService.listSnapshots();
       state = state.copyWith(backups: list, isLoading: false);
     } catch (_) {
       state = state.copyWith(isLoading: false);
@@ -90,25 +91,22 @@ class BackupNotifier extends StateNotifier<BackupState> {
     final deviceId = _ref.read(authProvider).deviceId;
 
     try {
-      final meta = await _backupService.performBackup(deviceId);
+      final hasChanged = await SyncQueueService().triggerSync(deviceId);
+      
+      // Reload states
       await loadLocalBackupMeta();
       await refreshRemoteBackups();
+      await checkUnsyncedStatus();
       
-      // If backup succeeded, clear the unsynced changes state
-      if (meta != null && meta.status == 'SUCCESS') {
-        // Also clear any pending items in SQLite queue as we just did a full backup!
-        final pending = await _repository.getPendingSyncQueue();
-        for (final item in pending) {
-          await _repository.updateSyncQueueStatus(item.id, 'DONE');
-        }
-        await _repository.clearSyncedQueue();
-        await checkUnsyncedStatus();
-        state = state.copyWith(isLoading: false);
-        return true;
+      if (hasChanged) {
+        // Reload transactions if remote changes were applied
+        await _ref.read(transactionProvider.notifier).loadAllTransactions();
+        _ref.read(itemProvider.notifier).loadItems();
+        _ref.read(partyProvider.notifier).loadParties();
       }
-      
+
       state = state.copyWith(isLoading: false);
-      return false;
+      return true;
     } catch (_) {
       state = state.copyWith(isLoading: false);
       return false;

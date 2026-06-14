@@ -187,7 +187,7 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                      decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                       child: Text(
                         '${lowStockItems.length} Items',
                         style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
@@ -197,10 +197,10 @@ class DashboardScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 Card(
-                  color: Colors.red.withOpacity(0.03),
+                  color: Colors.red.withValues(alpha: 0.03),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Colors.red.withOpacity(0.2)),
+                    side: BorderSide(color: Colors.red.withValues(alpha: 0.2)),
                   ),
                   child: ListView.separated(
                     shrinkWrap: true,
@@ -240,7 +240,7 @@ class DashboardScreen extends ConsumerWidget {
                     child: Text(
                       'No transactions recorded yet.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                     ),
                   ),
                 )
@@ -269,7 +269,7 @@ class DashboardScreen extends ConsumerWidget {
 
                       return ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: color.withOpacity(0.12),
+                          backgroundColor: color.withValues(alpha: 0.12),
                           foregroundColor: color,
                           child: Icon(icon, size: 20),
                         ),
@@ -322,9 +322,9 @@ class DashboardScreen extends ConsumerWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.08),
+                            color: Colors.green.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
+                            border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 1.5),
                           ),
                           child: const Column(
                             children: [
@@ -351,14 +351,14 @@ class DashboardScreen extends ConsumerWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
                           decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.08),
+                            color: Colors.orange.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.orange.withOpacity(0.3), width: 1.5),
+                            border: Border.all(color: Colors.orange.withValues(alpha: 0.3), width: 1.5),
                           ),
                           child: Column(
                             children: [
                               Icon(Icons.science_rounded, color: Colors.orange.shade800, size: 32),
-                              SizedBox(height: 8),
+                              const SizedBox(height: 8),
                               Text(
                                 'Fertilizers/Pest',
                                 textAlign: TextAlign.center,
@@ -419,10 +419,10 @@ class DashboardScreen extends ConsumerWidget {
     }
 
     return Card(
-      color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.15)),
+        side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.15)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -444,9 +444,9 @@ class DashboardScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: badgeColor.withOpacity(0.15),
+                color: badgeColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: badgeColor.withOpacity(0.4), width: 1),
+                border: Border.all(color: badgeColor.withValues(alpha: 0.4), width: 1),
               ),
               child: Text(
                 badgeText,
@@ -474,7 +474,7 @@ class DashboardScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
-              backgroundColor: color.withOpacity(0.1),
+              backgroundColor: color.withValues(alpha: 0.1),
               foregroundColor: color,
               radius: 16,
               child: Icon(icon, size: 16),
@@ -496,7 +496,7 @@ class DashboardScreen extends ConsumerWidget {
                 Text(
                   title,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     fontSize: 9,
                   ),
                   maxLines: 1,
@@ -589,7 +589,7 @@ class DashboardScreen extends ConsumerWidget {
           child: Row(
             children: [
               CircleAvatar(
-                backgroundColor: color.withOpacity(0.12),
+                backgroundColor: color.withValues(alpha: 0.12),
                 foregroundColor: color,
                 radius: 20,
                 child: Icon(icon, size: 20),
@@ -645,7 +645,7 @@ class DashboardScreen extends ConsumerWidget {
                 ),
                 Text(
                   'Telangana Seed & Fertiliser',
-                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
                 ),
               ],
             ),

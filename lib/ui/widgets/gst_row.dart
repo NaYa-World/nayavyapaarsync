@@ -69,7 +69,7 @@ class GstRow extends StatelessWidget {
           label,
           style: isSubRow
               ? theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                   fontSize: 13,
                 )
               : theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
@@ -78,7 +78,7 @@ class GstRow extends StatelessWidget {
           IndianFormatUtils.formatCurrency(amount),
           style: isSubRow
               ? theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                   fontSize: 13,
                 )
               : theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),

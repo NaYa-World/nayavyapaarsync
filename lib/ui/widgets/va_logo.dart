@@ -14,7 +14,7 @@ class VALogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logoBgColor = isDark ? Colors.white : Colors.white.withOpacity(0.18);
+    final logoBgColor = isDark ? Colors.white : Colors.white.withValues(alpha: 0.18);
     final textColor = color ?? (isDark ? const Color(0xFF0F5132) : Colors.white);
     
     return Container(
@@ -26,14 +26,14 @@ class VALogo extends StatelessWidget {
         boxShadow: isDark
             ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 )
               ]
             : null,
         border: Border.all(
-          color: isDark ? const Color(0xFF0F5132).withOpacity(0.25) : Colors.white.withOpacity(0.25),
+          color: isDark ? const Color(0xFF0F5132).withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.25),
           width: size * 0.03,
         ),
       ),
@@ -59,7 +59,7 @@ class VALogo extends StatelessWidget {
               width: size * 0.35,
               height: size * 0.035,
               decoration: BoxDecoration(
-                color: textColor.withOpacity(0.7),
+                color: textColor.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(size * 0.01),
               ),
             ),

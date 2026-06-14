@@ -4,15 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/gst_calculator.dart';
-import '../../../core/utils/indian_format.dart';
 import '../../../data/models/item.dart';
 import '../../../data/models/party.dart';
 import '../../../data/models/sale.dart';
 import '../../../data/repositories/item_repository.dart';
-import '../../../data/repositories/sale_repository.dart';
-import '../../../providers/connectivity_provider.dart';
 import '../../../providers/item_provider.dart';
 import '../../../providers/party_provider.dart';
 import '../../../providers/settings_provider.dart';
@@ -621,7 +617,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isOnline = ref.watch(isOnlineProvider);
     final customers = ref.watch(customerProvider);
     final itemsData = ref.watch(itemProvider).value ?? [];
     final isEdit = widget.saleToEdit != null;
@@ -669,9 +664,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           DropdownButtonFormField<String>(
-                            value: customers.any((p) => p.party.id == _selectedParty?.id)
+                            initialValue: customers.any((p) => p.party.id == _selectedParty?.id)
                                 ? _selectedParty?.id
-                                : (_selectedParty != null ? _selectedParty!.id : null),
+                                : (_selectedParty?.id),
                             decoration: InputDecoration(
                               labelText: 'Select Customer / కొనుగోలుదారు *',
                               prefixIcon: const Icon(Icons.person_rounded),
@@ -842,8 +837,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                   _buildFormRow(
                                     'Variety / సరుకు *',
                                     DropdownButtonFormField<Item>(
-                                      value: row.selectedItem,
-                                      hint: const Text('Select Variety'),
+                                      initialValue: row.selectedItem,
+                                      hint: const Text('Select Variety / సరుకును ఎంచుకోండి'),
                                       decoration: InputDecoration(
                                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                         border: const OutlineInputBorder(),
@@ -867,7 +862,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                     _buildFormRow(
                                       'Lot / Batch No *',
                                       DropdownButtonFormField<BatchStockDetails>(
-                                        value: row.availableBatches.contains(row.selectedBatch)
+                                        initialValue: row.availableBatches.contains(row.selectedBatch)
                                             ? row.selectedBatch
                                             : null,
                                         hint: const Text('Select Lot / Batch No *'),
@@ -887,6 +882,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                           }
                                         },
                                         validator: (val) => val == null ? 'Required' : null,
+                                      ),
+                                    ),
                                       ),
                                     ),
                                     _buildFormRow(
@@ -1003,7 +1000,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                     _buildFormRow(
                                       'GST %',
                                       DropdownButtonFormField<double>(
-                                        value: row.gstRate,
+                                        initialValue: row.gstRate,
                                         decoration: const InputDecoration(
                                           contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                           border: OutlineInputBorder(),
@@ -1031,7 +1028,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: theme.colorScheme.secondaryContainer.withOpacity(0.3),
+                                    color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.3),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Row(
@@ -1110,7 +1107,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: DropdownButtonFormField<String>(
-                        value: _paymentStatus,
+                        initialValue: _paymentStatus,
                         decoration: const InputDecoration(
                           labelText: 'Payment Status / చెల్లింపు స్థితి',
                           prefixIcon: Icon(Icons.payment_rounded),
