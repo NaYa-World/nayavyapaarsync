@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:io';
-import 'package:path/path.dart' as p;
-import 'package:sqflite/sqflite.dart';
 import '../../../core/utils/date_utils.dart';
-import '../../../core/utils/indian_format.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/settings_provider.dart';
-import '../../../services/gdrive_service.dart';
-import '../../screens/settings/settings_screen.dart';
+import '../../../services/sync_queue_service.dart';
+import '../../../sync/manifest_manager.dart';
 import '../../widgets/va_logo.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -20,7 +16,7 @@ class SplashScreen extends ConsumerStatefulWidget {
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
   bool _searchingBackups = false;
-  List<GDriveFileMeta> _backupsFound = [];
+  Manifest? _manifestFound;
   bool _showRestoreDialog = false;
 
   @override
@@ -43,10 +39,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         });
 
         try {
-          final backups = await GDriveService().listBackups();
-          if (backups.isNotEmpty) {
+          final manifest = await ManifestManager().downloadManifest();
+          if (manifest != null && (manifest.latestSnapshot != null || manifest.deviceRegistry.isNotEmpty)) {
             setState(() {
-              _backupsFound = backups;
+              _manifestFound = manifest;
               _showRestoreDialog = true;
               _searchingBackups = false;
             });
@@ -63,29 +59,31 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     }
   }
 
-  Future<void> _restoreBackup(GDriveFileMeta backup) async {
+  Future<void> _restoreBackup() async {
     setState(() {
       _searchingBackups = true;
       _showRestoreDialog = false;
     });
 
     try {
-      final String dbDir = await getDatabasesPath();
-      final String dbPath = p.join(dbDir, 'godown_management.db');
-      final File tempFile = File(dbPath);
+      final deviceId = ref.read(authProvider).deviceId;
+      // Look up registered role in the manifest if they were registered, otherwise default to OWNER
+      final registeredRole = _manifestFound?.deviceRegistry[deviceId]?.role ?? 'owner';
 
-      final success = await GDriveService().downloadBackup(backup.id, tempFile);
+      final success = await SyncQueueService().restoreFromManifest(_manifestFound!, deviceId, registeredRole);
       if (success) {
         // Force reload db and settings
-        ref.read(settingsProvider.notifier).loadSettings();
+        await ref.read(settingsProvider.notifier).loadSettings();
         // Refresh app state
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Database restored successfully!'), backgroundColor: Colors.green),
         );
       } else {
-        throw Exception('Download failed');
+        throw Exception('Download/apply failed');
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to restore backup: ${e.toString()}'), backgroundColor: Colors.red),
       );
@@ -163,7 +161,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             ),
 
             // Restore Dialog Overlay
-            if (_showRestoreDialog)
+            if (_showRestoreDialog && _manifestFound != null)
               Container(
                 color: Colors.black54,
                 child: Center(
@@ -181,7 +179,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'Backups Found on Google Drive',
+                                  'Sync Data Found',
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -191,33 +189,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                           ),
                           const SizedBox(height: 12),
                           const Text(
-                            'We found existing backups for your account. Select a backup to restore your data, or skip to start fresh.',
+                            'We found existing sync data for your account. Restoring will download the latest database snapshot and replay incremental changes.',
                             style: TextStyle(fontSize: 13, height: 1.4),
                           ),
                           const SizedBox(height: 16),
-                          Container(
-                            constraints: const BoxConstraints(maxHeight: 200),
-                            child: ListView.separated(
-                              shrinkWrap: true,
-                              itemCount: _backupsFound.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final backup = _backupsFound[index];
-                                return ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  title: Text(
-                                    AppDateUtils.formatDate(backup.createdTime),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                  ),
-                                  subtitle: Text(
-                                    'Size: ${(backup.size / 1024 / 1024).toStringAsFixed(2)} MB',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  trailing: Icon(Icons.settings_backup_restore_rounded, color: theme.colorScheme.primary),
-                                  onTap: () => _restoreBackup(backup),
-                                );
-                              },
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'VyapaarSync Cloud Backup',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                             ),
+                            subtitle: Text(
+                              _manifestFound!.latestSnapshot != null
+                                  ? 'Latest Snapshot: ${AppDateUtils.formatDate(DateTime.fromMillisecondsSinceEpoch(_manifestFound!.latestSnapshot!.generatedAt))}'
+                                  : 'Incremental Change Logs Available',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            trailing: Icon(Icons.settings_backup_restore_rounded, color: theme.colorScheme.primary),
+                            onTap: _restoreBackup,
                           ),
                           const SizedBox(height: 20),
                           Row(

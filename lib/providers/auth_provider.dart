@@ -37,10 +37,9 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService = AuthService();
   final _secureStorage = const FlutterSecureStorage();
-  final Ref _ref;
   static const String _deviceIdKey = 'device_unique_id';
 
-  AuthNotifier(this._ref) : super(AuthState(deviceId: 'unknown')) {
+  AuthNotifier() : super(AuthState(deviceId: 'unknown')) {
     _initAuth();
   }
 
@@ -105,5 +104,5 @@ class AuthNotifier extends StateNotifier<AuthState> {
 }
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier(ref);
+  return AuthNotifier();
 });
