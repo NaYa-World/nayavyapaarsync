@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../services/auth_service.dart';
 import '../data/database/db_helper.dart';
 import 'settings_provider.dart';
+import '../sync/sync_role_manager.dart';
 
 class AuthState {
   final GoogleSignInAccount? user;
@@ -89,6 +90,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       
       // Clear database
       await DbHelper().clearDatabase();
+
+      // Clear sync role singleton
+      await SyncRoleManager().clearRole();
       
       // Reset settings provider
       ref.read(settingsProvider.notifier).loadSettings();

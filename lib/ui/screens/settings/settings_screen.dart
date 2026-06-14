@@ -4,6 +4,7 @@ import '../../../data/models/settings.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../services/ocr_service.dart';
+import '../../../sync/sync_role_manager.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   final bool isFirstLaunch;
@@ -77,6 +78,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       // Save database settings
       await ref.read(settingsProvider.notifier).saveSettings(newSettings);
+
+      // Persist active role in singleton
+      await SyncRoleManager().setRoleManually(_selectedRole);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Settings saved successfully!'), backgroundColor: Colors.green),
