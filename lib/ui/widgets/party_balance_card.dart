@@ -65,7 +65,7 @@ class PartyBalanceCard extends StatelessWidget {
                     Text(
                       party.phone,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -97,7 +97,7 @@ class PartyBalanceCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: indicatorColor.withOpacity(0.12),
+                      color: indicatorColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(

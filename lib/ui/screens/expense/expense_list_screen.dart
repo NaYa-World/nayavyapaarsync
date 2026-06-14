@@ -80,7 +80,7 @@ class _ExpenseListScreenState extends ConsumerState<ExpenseListScreen> {
                   const Divider(),
                   // Category dropdown filter
                   DropdownButtonFormField<String>(
-                    value: _selectedCategory,
+                    initialValue: _selectedCategory,
                     decoration: const InputDecoration(
                       labelText: 'Filter by Category',
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -130,7 +130,7 @@ class _ExpenseListScreenState extends ConsumerState<ExpenseListScreen> {
                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.errorContainer.withOpacity(0.4),
+                        color: theme.colorScheme.errorContainer.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: theme.colorScheme.errorContainer, width: 1),
                       ),
@@ -172,7 +172,7 @@ class _ExpenseListScreenState extends ConsumerState<ExpenseListScreen> {
                           ? Center(
                               child: Text(
                                 'No expenses logged for this period.',
-                                style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6)),
+                                style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                               ),
                             )
                           : ListView.separated(
@@ -187,7 +187,7 @@ class _ExpenseListScreenState extends ConsumerState<ExpenseListScreen> {
                                   elevation: 1,
                                   child: ListTile(
                                     leading: CircleAvatar(
-                                      backgroundColor: _getCategoryColor(expense.category).withOpacity(0.12),
+                                      backgroundColor: _getCategoryColor(expense.category).withValues(alpha: 0.12),
                                       foregroundColor: _getCategoryColor(expense.category),
                                       child: Icon(_getCategoryIcon(expense.category)),
                                     ),
@@ -475,7 +475,7 @@ class _ExpenseFormDialogState extends ConsumerState<ExpenseFormDialog> {
             children: [
               // Category Dropdown
               DropdownButtonFormField<String>(
-                value: _category,
+                initialValue: _category,
                 decoration: const InputDecoration(labelText: 'Expense Category *'),
                 items: const [
                   DropdownMenuItem(value: 'RENT', child: Text('Rent (అద్దె)')),
@@ -526,7 +526,7 @@ class _ExpenseFormDialogState extends ConsumerState<ExpenseFormDialog> {
 
               // Payment method
               DropdownButtonFormField<String>(
-                value: _paymentMethod,
+                initialValue: _paymentMethod,
                 decoration: const InputDecoration(labelText: 'Payment Method *'),
                 items: const [
                   DropdownMenuItem(value: 'CASH', child: Text('CASH (నగదు)')),

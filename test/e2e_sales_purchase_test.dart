@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:godown_management/data/database/db_helper.dart';
 import 'package:godown_management/data/repositories/item_repository.dart';
@@ -176,14 +175,14 @@ void main() {
       expect(updatedBatch.remainingStock, 75.0); // 100.0 - 25.0 = 75.0
 
       // 6. Test insufficient stock check logic
-      final double requestQty = 80.0;
+      const double requestQty = 80.0;
       final double availableStock = updatedBatch.remainingStock;
       
       // Stock check must block sales when requestQty > availableStock
       final bool isStockDeficit = requestQty > availableStock;
       expect(isStockDeficit, true); // 80.0 > 75.0, should block
       
-      final double safeQty = 50.0;
+      const double safeQty = 50.0;
       final bool isSafeStock = safeQty > availableStock;
       expect(isSafeStock, false); // 50.0 <= 75.0, should pass
     });

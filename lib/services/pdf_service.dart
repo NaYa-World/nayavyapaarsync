@@ -98,7 +98,7 @@ class PdfService {
                   children: [
                     pw.Text(
                       type == 'SALE' ? 'BILL TO (CUSTOMER):' : 'RECEIVED FROM (SUPPLIER):',
-                      style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+                      style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
                     ),
                     pw.SizedBox(height: 4),
                     pw.Text(
@@ -149,7 +149,7 @@ class PdfService {
                   final double gstRate = (item['gstRate'] as num).toDouble();
                   final double lineTotal = qty * rate * (1 + gstRate / 100.0);
 
-                  final String qtyStr = IndianFormatUtils.formatNumber(qty) + ' ' + (item['unit'] as String).toLowerCase();
+                  final String qtyStr = '${IndianFormatUtils.formatNumber(qty)} ${(item['unit'] as String).toLowerCase()}';
 
                   return pw.TableRow(
                     children: [

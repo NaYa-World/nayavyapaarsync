@@ -212,8 +212,8 @@ class _GSTReportScreenState extends ConsumerState<GSTReportScreen> with SingleTi
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: netGstPayable >= 0
-                        ? theme.colorScheme.errorContainer.withOpacity(0.4)
-                        : Colors.green.shade50.withOpacity(0.8),
+                        ? theme.colorScheme.errorContainer.withValues(alpha: 0.4)
+                        : Colors.green.shade50.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: netGstPayable >= 0 ? theme.colorScheme.errorContainer : Colors.green.shade200,
@@ -403,7 +403,7 @@ class _GSTReportScreenState extends ConsumerState<GSTReportScreen> with SingleTi
       return Center(
         child: Text(
           isSale ? 'No Sales recorded in this month.' : 'No Purchases recorded in this month.',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6)),
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
         ),
       );
     }
