@@ -1,0 +1,60 @@
+name: Flutter CI/CD Build APK
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push events for all branches (useful for learning & testing)
+  push:
+    branches:
+      - '**'
+  # Also allows you to run this workflow manually from the Actions tab on GitHub
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build-android:
+    name: Build Android APK
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository code onto the GitHub runner
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Java Development Kit (JDK)
+      # Modern Flutter/Android builds require Java to execute the Gradle build tasks.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          # Caching gradle dependencies speeds up subsequent CI/CD runs
+          cache: 'gradle'
+
+      # Step 3: Install and configure Flutter
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2' # Matches your project's local Flutter version
+          # Caching pub dependencies speeds up subsequent builds
+          cache: true
+
+      # Step 4: Install Flutter packages/dependencies
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # Step 5: Check code quality (Highly recommended for CI/CD learning!)
+      # This ensures compilation errors or style violations stop the build early.
+      - name: Analyze Code
+        run: flutter analyze
+
+      # Step 6: Build the release APK
+      - name: Build APK
+        run: flutter build apk --release
+
+      # Step 7: Upload the generated APK so you can download it from the GitHub page
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
