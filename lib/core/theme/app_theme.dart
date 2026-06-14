@@ -18,8 +18,7 @@ class AppTheme {
       primary: primaryGreen,
       secondary: const Color(0xFF8C6D1C),
       tertiary: const Color(0xFF2E6F40),
-      background: lightBackground,
-      surface: lightSurface,
+      surface: lightBackground,
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: primaryGreen,
@@ -68,8 +67,7 @@ class AppTheme {
       brightness: Brightness.dark,
       primary: const Color(0xFF85E3A4), // Light Green
       secondary: secondaryGold,
-      background: darkBackground,
-      surface: darkSurface,
+      surface: darkBackground,
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: darkSurface,

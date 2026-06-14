@@ -97,6 +97,7 @@ class _CherryPickRestoreScreenState extends ConsumerState<CherryPickRestoreScree
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to load backup: ${e.toString()}'), backgroundColor: Colors.red),
       );
@@ -163,6 +164,7 @@ class _CherryPickRestoreScreenState extends ConsumerState<CherryPickRestoreScree
       ref.read(itemProvider.notifier).loadItems();
       ref.read(partyProvider.notifier).loadParties();
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Restored $restoredItemsCount items and $restoredPartiesCount parties successfully!'),
@@ -172,6 +174,7 @@ class _CherryPickRestoreScreenState extends ConsumerState<CherryPickRestoreScree
 
       Navigator.pop(context);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Restore failed: ${e.toString()}'), backgroundColor: Colors.red),
       );

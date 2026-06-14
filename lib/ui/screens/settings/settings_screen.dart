@@ -81,6 +81,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // Persist active role in singleton
       await SyncRoleManager().setRoleManually(_selectedRole);
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Settings saved successfully!'), backgroundColor: Colors.green),
       );
@@ -91,6 +92,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         Navigator.pop(context);
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to save settings: ${e.toString()}'), backgroundColor: Colors.red),
       );

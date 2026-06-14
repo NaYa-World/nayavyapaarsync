@@ -73,6 +73,7 @@ class AuthScreen extends ConsumerWidget {
                           label: const Text('Sign In with Google'),
                           onPressed: () async {
                             final success = await ref.read(authProvider.notifier).signIn();
+                            if (!context.mounted) return;
                             if (success) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
