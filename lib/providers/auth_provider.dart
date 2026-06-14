@@ -36,11 +36,12 @@ class AuthState {
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
+  final Ref _ref;
   final AuthService _authService = AuthService();
   final _secureStorage = const FlutterSecureStorage();
   static const String _deviceIdKey = 'device_unique_id';
 
-  AuthNotifier() : super(AuthState(deviceId: 'unknown')) {
+  AuthNotifier(this._ref) : super(AuthState(deviceId: 'unknown')) {
     _initAuth();
   }
 
@@ -83,7 +84,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// Logs out of Google
-  Future<void> signOut(Ref ref) async {
+  Future<void> signOut() async {
     state = state.copyWith(isLoading: true);
     try {
       await _authService.signOut();
@@ -95,7 +96,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await SyncRoleManager().clearRole();
       
       // Reset settings provider
-      ref.read(settingsProvider.notifier).loadSettings();
+      _ref.read(settingsProvider.notifier).loadSettings();
       
       state = state.copyWith(user: null, isLoading: false);
     } catch (e) {
@@ -108,5 +109,5 @@ class AuthNotifier extends StateNotifier<AuthState> {
 }
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier();
+  return AuthNotifier(ref);
 });
