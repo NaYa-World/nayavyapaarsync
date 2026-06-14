@@ -20,6 +20,7 @@ import '../../../providers/transaction_provider.dart';
 import '../../../services/ocr_service.dart';
 import '../../widgets/gst_row.dart';
 import '../party/party_ledger_screen.dart';
+import 'sale_preview_screen.dart';
 
 class SaleEntryScreen extends ConsumerStatefulWidget {
   final Sale? saleToEdit;
@@ -48,6 +49,33 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
   // Low confidence highlights from OCR
   final Map<String, bool> _uncertainFields = {};
+
+  TableRow _buildFormRow(String label, Widget inputWidget) {
+    return TableRow(
+      children: [
+        TableCell(
+          verticalAlignment: TableCellVerticalAlignment.middle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+        TableCell(
+          verticalAlignment: TableCellVerticalAlignment.middle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            child: inputWidget,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   void initState() {
@@ -575,22 +603,17 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       ));
     }
 
-    try {
-      if (isEdit) {
-        await ref.read(transactionProvider.notifier).editSale(sale, itemsList);
-      } else {
-        await ref.read(transactionProvider.notifier).addSale(sale, itemsList);
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sale saved successfully!'), backgroundColor: Colors.green),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save sale: ${e.toString()}'), backgroundColor: Colors.red),
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SalePreviewScreen(
+            sale: sale,
+            items: itemsList,
+            party: _selectedParty!,
+            isEdit: isEdit,
+          ),
+        ),
       );
     }
   }
@@ -785,20 +808,47 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  CircleAvatar(
-                                    radius: 12,
-                                    backgroundColor: theme.colorScheme.secondaryContainer,
-                                    child: Text('${index + 1}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                  Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 12,
+                                        backgroundColor: theme.colorScheme.secondaryContainer,
+                                        child: Text('${index + 1}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Item Row #${index + 1}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: DropdownButtonFormField<Item>(
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                                    onPressed: () => _removeItemRow(index),
+                                  ),
+                                ],
+                              ),
+                              const Divider(),
+                              const SizedBox(height: 8),
+                              Table(
+                                columnWidths: const {
+                                  0: FlexColumnWidth(1.2),
+                                  1: FlexColumnWidth(2.0),
+                                },
+                                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                                children: [
+                                  _buildFormRow(
+                                    'Variety / సరుకు *',
+                                    DropdownButtonFormField<Item>(
                                       value: row.selectedItem,
-                                      hint: const Text('Select Variety / సరుకును ఎంచుకోండి'),
+                                      hint: const Text('Select Variety'),
                                       decoration: InputDecoration(
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        border: const OutlineInputBorder(),
                                         fillColor: _uncertainFields['${rowPrefix}_name'] == true ? Colors.yellow.shade100 : null,
+                                        filled: _uncertainFields['${rowPrefix}_name'] == true,
                                         helperText: row.selectedItem == null && row.scannedItemName != null ? 'Scanned: ${row.scannedItemName}' : null,
                                         helperStyle: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.bold, fontSize: 10),
                                       ),
@@ -813,152 +863,150 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                       onChanged: (val) => _onItemChanged(row, val),
                                     ),
                                   ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                                    onPressed: () => _removeItemRow(index),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              if (row.selectedItem != null) ...[
-                                DropdownButtonFormField<BatchStockDetails>(
-                                  value: row.availableBatches.contains(row.selectedBatch)
-                                      ? row.selectedBatch
-                                      : null,
-                                  hint: const Text('Select Lot / Batch No *'),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Available Purchase Batches *',
-                                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                  ),
-                                  items: row.availableBatches.map((b) {
-                                    return DropdownMenuItem(
-                                      value: b,
-                                      child: Text('Batch: ${b.batchNo} (Stock: ${b.remainingStock.toStringAsFixed(2)} kg/L)'),
-                                    );
-                                  }).toList(),
-                                  onChanged: (val) {
-                                    if (val != null) {
-                                      _selectBatch(row, val);
-                                    }
-                                  },
-                                  validator: (val) => val == null ? 'Required' : null,
-                                ),
-                                const SizedBox(height: 12),
-
-                                GridView.count(
-                                  crossAxisCount: 2,
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  crossAxisSpacing: 8,
-                                  mainAxisSpacing: 8,
-                                  childAspectRatio: 2.8,
-                                  children: [
-                                    TextFormField(
-                                      controller: row.manufacturerController,
-                                      readOnly: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Manufacturer',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        filled: true,
+                                  if (row.selectedItem != null) ...[
+                                    _buildFormRow(
+                                      'Lot / Batch No *',
+                                      DropdownButtonFormField<BatchStockDetails>(
+                                        value: row.availableBatches.contains(row.selectedBatch)
+                                            ? row.selectedBatch
+                                            : null,
+                                        hint: const Text('Select Lot / Batch No *'),
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: row.availableBatches.map((b) {
+                                          return DropdownMenuItem(
+                                            value: b,
+                                            child: Text('Batch: ${b.batchNo} (Stock: ${b.remainingStock.toStringAsFixed(2)} kg/L)'),
+                                          );
+                                        }).toList(),
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            _selectBatch(row, val);
+                                          }
+                                        },
+                                        validator: (val) => val == null ? 'Required' : null,
                                       ),
                                     ),
-                                    TextFormField(
-                                      controller: row.packingController,
-                                      readOnly: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Packing',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        filled: true,
+                                    _buildFormRow(
+                                      'Manufacturer',
+                                      TextFormField(
+                                        controller: row.manufacturerController,
+                                        readOnly: true,
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
+                                          filled: true,
+                                        ),
                                       ),
                                     ),
-                                    TextFormField(
-                                      controller: row.hsnCodeController,
-                                      readOnly: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'HSN Code',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        filled: true,
+                                    _buildFormRow(
+                                      'Packing',
+                                      TextFormField(
+                                        controller: row.packingController,
+                                        readOnly: true,
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
+                                          filled: true,
+                                        ),
                                       ),
                                     ),
-                                    TextFormField(
-                                      controller: row.batchNoController,
-                                      readOnly: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Batch No.',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        filled: true,
+                                    _buildFormRow(
+                                      'HSN Code',
+                                      TextFormField(
+                                        controller: row.hsnCodeController,
+                                        readOnly: true,
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
+                                          filled: true,
+                                        ),
                                       ),
                                     ),
-                                    TextFormField(
-                                      controller: row.mfgDateController,
-                                      readOnly: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Mfg Date',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        filled: true,
+                                    _buildFormRow(
+                                      'Batch No.',
+                                      TextFormField(
+                                        controller: row.batchNoController,
+                                        readOnly: true,
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
+                                          filled: true,
+                                        ),
                                       ),
                                     ),
-                                    TextFormField(
-                                      controller: row.expDateController,
-                                      readOnly: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Exp Date',
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        filled: true,
+                                    _buildFormRow(
+                                      'Mfg Date',
+                                      TextFormField(
+                                        controller: row.mfgDateController,
+                                        readOnly: true,
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
+                                          filled: true,
+                                        ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextFormField(
+                                    _buildFormRow(
+                                      'Exp Date',
+                                      TextFormField(
+                                        controller: row.expDateController,
+                                        readOnly: true,
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
+                                          filled: true,
+                                        ),
+                                      ),
+                                    ),
+                                    _buildFormRow(
+                                      'Unit/Case *',
+                                      TextFormField(
                                         controller: row.unitPerCaseController,
                                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                         decoration: const InputDecoration(
-                                          labelText: 'Unit/Case *',
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
                                         ),
                                         onChanged: (_) => _recalculateRow(row),
                                         validator: (val) => val == null || double.tryParse(val) == null ? 'Invalid' : null,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextFormField(
+                                    _buildFormRow(
+                                      'No. Cases *',
+                                      TextFormField(
                                         controller: row.noOfCasesController,
                                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                         decoration: const InputDecoration(
-                                          labelText: 'No. Cases *',
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
                                         ),
                                         onChanged: (_) => _recalculateRow(row),
                                         validator: (val) => val == null || double.tryParse(val) == null ? 'Invalid' : null,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextFormField(
+                                    _buildFormRow(
+                                      'Unit Price *',
+                                      TextFormField(
                                         controller: row.unitPriceController,
                                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                         decoration: const InputDecoration(
-                                          labelText: 'Unit Price *',
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
                                         ),
                                         onChanged: (_) => _recalculateRow(row),
                                         validator: (val) => val == null || double.tryParse(val) == null ? 'Invalid' : null,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: DropdownButtonFormField<double>(
+                                    _buildFormRow(
+                                      'GST %',
+                                      DropdownButtonFormField<double>(
                                         value: row.gstRate,
                                         decoration: const InputDecoration(
-                                          labelText: 'GST %',
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(),
                                         ),
                                         items: const [
                                           DropdownMenuItem(value: 0.0, child: Text('0%')),
@@ -976,9 +1024,10 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                       ),
                                     ),
                                   ],
-                                ),
-                                const SizedBox(height: 12),
-
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              if (row.selectedItem != null) ...[
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
@@ -1085,7 +1134,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
                   ElevatedButton(
                     onPressed: _saveInvoice,
-                    child: Text(isEdit ? 'Save Changes' : 'Confirm & Save Sale'),
+                    child: Text(isEdit ? 'Preview Changes PDF' : 'Preview Sale PDF'),
                   ),
                 ],
               ),
