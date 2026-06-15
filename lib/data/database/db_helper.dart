@@ -575,8 +575,13 @@ class DbHelper {
     }
 
     if (oldVersion < 11) {
-      // 1. Alter app_users table to add salt column
-      await db.execute('ALTER TABLE app_users ADD COLUMN salt TEXT');
+      // 1. Alter app_users table to add salt column (if table exists)
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='app_users'"
+      );
+      if (tables.isNotEmpty) {
+        await db.execute('ALTER TABLE app_users ADD COLUMN salt TEXT');
+      }
 
       // 2. Create triggers for vouchers -> fts_vouchers
       await db.execute('''

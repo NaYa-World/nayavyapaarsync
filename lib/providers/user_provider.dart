@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../data/database/db_helper.dart';
 import '../data/models/app_user.dart';
 import '../data/repositories/user_repository.dart';
 
@@ -73,17 +74,18 @@ class UserNotifier extends StateNotifier<AsyncValue<List<AppUser>>> {
     if (user.salt == null || user.salt!.isEmpty) {
       final newSalt = UserRepository.generateSalt();
       final newHash = UserRepository.hashPinSecure(plainPin, newSalt);
+      final formattedHash = '$newSalt:$newHash';
       final db = await DbHelper().database;
       await db.update(
         'app_users',
         {
-          'pin_hash': newHash,
+          'pin_hash': formattedHash,
           'salt': newSalt,
         },
         where: 'id = ?',
         whereArgs: [user.id],
       );
-      return user.copyWith(pinHash: newHash, salt: newSalt);
+      return user.copyWith(pinHash: formattedHash, salt: newSalt);
     }
     return user;
   }

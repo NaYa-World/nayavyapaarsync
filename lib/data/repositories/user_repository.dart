@@ -34,10 +34,17 @@ class UserRepository {
     return const Uuid().v4();
   }
 
-  /// Validates a PIN against stored hash
+  /// Validates a PIN against stored hash (supporting legacy unsalted fallback + modular formatting)
   bool validatePin(String pin, String storedHash, {String? salt}) {
-    if (salt != null && salt.isNotEmpty) {
-      return hashPinSecure(pin, salt) == storedHash;
+    if (storedHash.contains(':')) {
+      final parts = storedHash.split(':');
+      final s = parts[0];
+      final h = parts[1];
+      return hashPinSecure(pin, s) == h;
+    }
+    final s = salt ?? '';
+    if (s.isNotEmpty) {
+      return hashPinSecure(pin, s) == storedHash;
     }
     return hashPinLegacy(pin) == storedHash;
   }
@@ -70,10 +77,11 @@ class UserRepository {
   }) async {
     final db = await _dbHelper.database;
     final salt = generateSalt();
+    final secureHash = hashPinSecure(plainPin, salt);
     final user = AppUser(
       id: _uuid.v4(),
       name: name,
-      pinHash: hashPinSecure(plainPin, salt),
+      pinHash: '$salt:$secureHash',
       salt: salt,
       role: role,
       companyId: companyId,
@@ -135,7 +143,7 @@ class UserRepository {
       await txn.update(
         'app_users',
         {
-          'pin_hash': newHash,
+          'pin_hash': '$newSalt:$newHash',
           'salt': newSalt,
         },
         where: 'id = ?',
