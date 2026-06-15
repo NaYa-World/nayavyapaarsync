@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../models/payment.dart';
 import '../database/db_helper.dart';
+import '../../core/utils/fy_guard.dart';
 
 class PaymentRepository {
   final DbHelper _dbHelper = DbHelper();
@@ -44,6 +45,7 @@ class PaymentRepository {
 
   /// Inserts a new payment transaction
   Future<void> insertPayment(Payment payment, String deviceId) async {
+    await FyGuard.checkDate(date: payment.date);
     final db = await _dbHelper.database;
     final map = payment.toMap();
 
@@ -80,6 +82,8 @@ class PaymentRepository {
     final db = await _dbHelper.database;
     final currentPayment = await getPayment(payment.id);
     if (currentPayment == null) return;
+    await FyGuard.checkDate(date: currentPayment.date);
+    await FyGuard.checkDate(date: payment.date);
     final map = payment.toMap();
 
     await db.transaction((txn) async {
@@ -120,6 +124,7 @@ class PaymentRepository {
     final db = await _dbHelper.database;
     final currentPayment = await getPayment(id);
     if (currentPayment == null) return;
+    await FyGuard.checkDate(date: currentPayment.date);
 
     final updatedMap = currentPayment.copyWith(isDeleted: true).toMap();
 

@@ -7,6 +7,7 @@ import '../../../providers/backup_provider.dart';
 import '../../../providers/item_provider.dart';
 import '../../../providers/party_provider.dart';
 import '../../../providers/transaction_provider.dart';
+import '../../../providers/settings_provider.dart';
 import '../../widgets/offline_badge.dart';
 import '../../widgets/va_logo.dart';
 import '../audit/audit_log_screen.dart';
@@ -17,8 +18,10 @@ import '../recycle_bin/recycle_bin_screen.dart';
 import '../reports/reports_screen.dart';
 import '../sale/sale_entry_screen.dart';
 import '../settings/settings_screen.dart';
+import '../settings/user_management_screen.dart';
 import '../stock/stock_register_screen.dart';
 import '../expense/expense_list_screen.dart';
+import '../company/company_list_screen.dart';
 import '../reports/gst_report_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -33,6 +36,10 @@ class DashboardScreen extends ConsumerWidget {
     final partyState = ref.watch(partyProvider);
     final lowStockItems = ref.watch(lowStockItemsProvider);
     final backupState = ref.watch(backupProvider);
+    final settings = ref.watch(settingsProvider);
+    final String companyName = (settings != null && settings.firmName.trim().isNotEmpty)
+        ? settings.firmName
+        : 'Telangana Seed & Fertiliser';
 
     // 2. Calculations for Metrics
     // Today's Sales
@@ -123,6 +130,9 @@ class DashboardScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Tally Gateway Header (Current Period & Company Name)
+              _buildTallyHeader(context, companyName),
+              const SizedBox(height: 16),
               // Backup Sync status banner
               _buildBackupBanner(context, ref, backupState),
               const SizedBox(height: 16),
@@ -285,6 +295,110 @@ class DashboardScreen extends ConsumerWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTallyHeader(BuildContext context, String companyName) {
+    final theme = Theme.of(context);
+    final fyRange = AppDateUtils.getFinancialYearRange(DateTime.now());
+    final String fyStartStr = DateFormat('dd-MMM-yyyy').format(fyRange.start);
+    final String fyEndStr = DateFormat('dd-MMM-yyyy').format(fyRange.end);
+    final String periodStr = '$fyStartStr to $fyEndStr';
+    final String currentDateStr = DateFormat('EEEE, dd-MMM-yyyy').format(DateTime.now());
+
+    return Card(
+      elevation: 2,
+      shadowColor: theme.colorScheme.primary.withValues(alpha: 0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              theme.colorScheme.primaryContainer.withValues(alpha: 0.25),
+              theme.colorScheme.surface,
+            ],
+          ),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CURRENT PERIOD',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.secondary,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      periodStr,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'CURRENT DATE',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.secondary,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      currentDateStr,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const Divider(height: 24, thickness: 1),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'NAME OF COMPANY',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.secondary,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  companyName,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -729,6 +843,23 @@ class DashboardScreen extends ConsumerWidget {
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const RecycleBinScreen()));
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.business_rounded),
+                  title: const Text('Companies & FY'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanyListScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.manage_accounts_rounded),
+                  title: const Text('User Management'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const UserManagementScreen()));
                   },
                 ),
                 const Divider(),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../models/expense.dart';
 import '../database/db_helper.dart';
+import '../../core/utils/fy_guard.dart';
 
 class ExpenseRepository {
   final DbHelper _dbHelper = DbHelper();
@@ -32,6 +33,7 @@ class ExpenseRepository {
 
   /// Inserts a new expense, writes to AuditLog and SyncQueue in a txn
   Future<void> insertExpense(Expense expense, String deviceId) async {
+    await FyGuard.checkDate(date: expense.date);
     final db = await _dbHelper.database;
     final map = expense.toMap();
 
@@ -68,6 +70,8 @@ class ExpenseRepository {
     final db = await _dbHelper.database;
     final currentExpense = await getExpense(expense.id);
     if (currentExpense == null) return;
+    await FyGuard.checkDate(date: currentExpense.date);
+    await FyGuard.checkDate(date: expense.date);
     final map = expense.toMap();
 
     await db.transaction((txn) async {
@@ -108,6 +112,7 @@ class ExpenseRepository {
     final db = await _dbHelper.database;
     final currentExpense = await getExpense(id);
     if (currentExpense == null) return;
+    await FyGuard.checkDate(date: currentExpense.date);
 
     final updatedMap = currentExpense.copyWith(isDeleted: true).toMap();
 

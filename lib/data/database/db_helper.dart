@@ -22,7 +22,7 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -190,6 +190,140 @@ class DbHelper {
         )
       ''');
     }
+
+    if (oldVersion < 8) {
+      // ── 1. Companies table ──────────────────────────────────────────────
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS companies (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          gstin TEXT,
+          address TEXT,
+          phone TEXT,
+          state TEXT NOT NULL DEFAULT 'Telangana',
+          state_code TEXT NOT NULL DEFAULT '36',
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL
+        )
+      ''');
+
+      // Seed first company from existing settings
+      final settingsExist = (await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
+      )).isNotEmpty;
+
+      String firmName = 'My Company';
+      String? gstin;
+      String? address;
+      String? phone;
+      String state = 'Telangana';
+      String stateCode = '36';
+
+      if (settingsExist) {
+        final settingsRows = await db.query('settings');
+        for (final row in settingsRows) {
+          final k = row['key'] as String;
+          final v = row['value'] as String;
+          if (k == 'firm_name' && v.trim().isNotEmpty) firmName = v.trim();
+          if (k == 'gstin' && v.trim().isNotEmpty) gstin = v.trim();
+          if (k == 'address' && v.trim().isNotEmpty) address = v.trim();
+          if (k == 'phone' && v.trim().isNotEmpty) phone = v.trim();
+          if (k == 'state' && v.trim().isNotEmpty) state = v.trim();
+          if (k == 'state_code' && v.trim().isNotEmpty) stateCode = v.trim();
+        }
+      }
+      final existingCompanies = await db.query('companies', limit: 1);
+      if (existingCompanies.isEmpty) {
+        await db.insert('companies', {
+          'id': 'company_default',
+          'name': firmName,
+          'gstin': gstin,
+          'address': address,
+          'phone': phone,
+          'state': state,
+          'state_code': stateCode,
+          'is_active': 1,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      }
+
+      // ── 2. Financial Years table ────────────────────────────────────────
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS financial_years (
+          id TEXT PRIMARY KEY,
+          company_id TEXT NOT NULL,
+          label TEXT NOT NULL,
+          start_date TEXT NOT NULL,
+          end_date TEXT NOT NULL,
+          is_locked INTEGER NOT NULL DEFAULT 0,
+          locked_by TEXT,
+          locked_at TEXT,
+          FOREIGN KEY(company_id) REFERENCES companies(id)
+        )
+      ''');
+
+      // Seed current financial year for the default company
+      final now = DateTime.now();
+      final fyStart = now.month >= 4
+          ? DateTime(now.year, 4, 1)
+          : DateTime(now.year - 1, 4, 1);
+      final fyEnd = DateTime(fyStart.year + 1, 3, 31);
+      final fyLabel =
+          'FY ${fyStart.year.toString().substring(2)}-${fyEnd.year.toString().substring(2)}';
+      final existingFYs = await db.query('financial_years', limit: 1);
+      if (existingFYs.isEmpty) {
+        await db.insert('financial_years', {
+          'id': 'fy_default',
+          'company_id': 'company_default',
+          'label': fyLabel,
+          'start_date': '${fyStart.year}-04-01',
+          'end_date': '${fyEnd.year}-03-31',
+          'is_locked': 0,
+          'locked_by': null,
+          'locked_at': null,
+        });
+      }
+
+      // ── 3. App Users table ──────────────────────────────────────────────
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS app_users (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          pin_hash TEXT NOT NULL,
+          role TEXT NOT NULL
+            CHECK(role IN ('ADMIN','CA','ACCOUNTANT','MANAGER')),
+          company_id TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(company_id) REFERENCES companies(id)
+        )
+      ''');
+
+      // ── 4. Cheque columns on payments ───────────────────────────────────
+      // Guard: only add if table exists and not already present (safe re-run)
+      final paymentsExist = (await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='payments'"
+      )).isNotEmpty;
+
+      if (paymentsExist) {
+        final paymentInfo = await db.rawQuery("PRAGMA table_info(payments)");
+        final existingCols = paymentInfo.map((r) => r['name'] as String).toSet();
+        if (!existingCols.contains('cheque_no')) {
+          await db.execute('ALTER TABLE payments ADD COLUMN cheque_no TEXT');
+        }
+        if (!existingCols.contains('cheque_bank')) {
+          await db.execute('ALTER TABLE payments ADD COLUMN cheque_bank TEXT');
+        }
+        if (!existingCols.contains('cheque_date')) {
+          await db.execute('ALTER TABLE payments ADD COLUMN cheque_date TEXT');
+        }
+        if (!existingCols.contains('cheque_status')) {
+          await db.execute(
+              "ALTER TABLE payments ADD COLUMN cheque_status TEXT "
+              "CHECK(cheque_status IN ('ISSUED','CLEARED','BOUNCED','CANCELLED'))");
+        }
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -336,6 +470,10 @@ class DbHelper {
         notes TEXT,
         created_at TEXT NOT NULL,
         is_deleted INTEGER NOT NULL DEFAULT 0,
+        cheque_no TEXT,
+        cheque_bank TEXT,
+        cheque_date TEXT,
+        cheque_status TEXT CHECK(cheque_status IN ('ISSUED','CLEARED','BOUNCED','CANCELLED')),
         FOREIGN KEY(party_id) REFERENCES parties(id)
       )
     ''');
@@ -413,7 +551,84 @@ class DbHelper {
     await db.insert('settings', {'key': 'state', 'value': 'Telangana'});
     await db.insert('settings', {'key': 'state_code', 'value': '36'});
 
-    // 13. Sync Conflicts table
+    // 13. Companies table
+    await db.execute('''
+      CREATE TABLE companies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        gstin TEXT,
+        address TEXT,
+        phone TEXT,
+        state TEXT NOT NULL DEFAULT 'Telangana',
+        state_code TEXT NOT NULL DEFAULT '36',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    // Seed default company (will be updated when user fills Settings)
+    await db.insert('companies', {
+      'id': 'company_default',
+      'name': 'My Company',
+      'gstin': null,
+      'address': null,
+      'phone': null,
+      'state': 'Telangana',
+      'state_code': '36',
+      'is_active': 1,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
+    // 14. Financial Years table
+    await db.execute('''
+      CREATE TABLE financial_years (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        is_locked INTEGER NOT NULL DEFAULT 0,
+        locked_by TEXT,
+        locked_at TEXT,
+        FOREIGN KEY(company_id) REFERENCES companies(id)
+      )
+    ''');
+
+    // Seed current financial year
+    final now = DateTime.now();
+    final fyStart = now.month >= 4
+        ? DateTime(now.year, 4, 1)
+        : DateTime(now.year - 1, 4, 1);
+    final fyEnd = DateTime(fyStart.year + 1, 3, 31);
+    final fyLabel =
+        'FY ${fyStart.year.toString().substring(2)}-${fyEnd.year.toString().substring(2)}';
+    await db.insert('financial_years', {
+      'id': 'fy_default',
+      'company_id': 'company_default',
+      'label': fyLabel,
+      'start_date': '${fyStart.year}-04-01',
+      'end_date': '${fyEnd.year}-03-31',
+      'is_locked': 0,
+      'locked_by': null,
+      'locked_at': null,
+    });
+
+    // 15. App Users table
+    await db.execute('''
+      CREATE TABLE app_users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        pin_hash TEXT NOT NULL,
+        role TEXT NOT NULL
+          CHECK(role IN ('ADMIN','CA','ACCOUNTANT','MANAGER')),
+        company_id TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(company_id) REFERENCES companies(id)
+      )
+    ''');
+
+    // 16. Sync Conflicts table
     await db.execute('''
       CREATE TABLE sync_conflicts (
         id TEXT PRIMARY KEY,
@@ -435,7 +650,7 @@ class DbHelper {
       )
     ''');
 
-    // 14. Conflict Audit Log table
+    // 17. Conflict Audit Log table
     await db.execute('''
       CREATE TABLE conflict_audit_log (
         id TEXT PRIMARY KEY,

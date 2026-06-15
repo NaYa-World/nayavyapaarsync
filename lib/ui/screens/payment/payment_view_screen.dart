@@ -162,6 +162,16 @@ class _PaymentViewScreenState extends ConsumerState<PaymentViewScreen> {
                                   'Mode: ${payment.mode} | Date: ${DateFormat('dd-MMM-yyyy').format(payment.date)}',
                                   style: const TextStyle(fontSize: 12),
                                 ),
+                                if (payment.mode == 'CHEQUE') ...[
+                                  Text(
+                                    'Cheque No: ${payment.chequeNo ?? "N/A"} | Bank: ${payment.chequeBank ?? "N/A"}',
+                                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                  ),
+                                  Text(
+                                    'Cheque Date: ${payment.chequeDate != null ? DateFormat('dd-MMM-yyyy').format(payment.chequeDate!) : "N/A"} | Status: ${payment.chequeStatus ?? "N/A"}',
+                                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                  ),
+                                ],
                                 if (payment.referenceNo != null && payment.referenceNo!.isNotEmpty)
                                   Text('Ref: ${payment.referenceNo}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                 if (payment.notes != null && payment.notes!.isNotEmpty)
@@ -221,6 +231,12 @@ class _AddPaymentDialogState extends ConsumerState<AddPaymentDialog> {
   final _notesController = TextEditingController();
   final _dateController = TextEditingController(text: DateFormat('dd-MMM-yyyy').format(DateTime.now()));
 
+  final _chequeNoController = TextEditingController();
+  final _chequeBankController = TextEditingController();
+  final _chequeDateController = TextEditingController(text: DateFormat('dd-MMM-yyyy').format(DateTime.now()));
+  String _chequeStatus = 'ISSUED';
+  DateTime _selectedChequeDate = DateTime.now();
+
   Party? _selectedParty;
   String _direction = 'RECEIVED'; // RECEIVED for customer, PAID for supplier
   String _mode = 'CASH'; // CASH, UPI, BANK, CHEQUE
@@ -242,7 +258,25 @@ class _AddPaymentDialogState extends ConsumerState<AddPaymentDialog> {
     _refController.dispose();
     _notesController.dispose();
     _dateController.dispose();
+    _chequeNoController.dispose();
+    _chequeBankController.dispose();
+    _chequeDateController.dispose();
     super.dispose();
+  }
+
+  Future<void> _selectChequeDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedChequeDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null && picked != _selectedChequeDate) {
+      setState(() {
+        _selectedChequeDate = picked;
+        _chequeDateController.text = DateFormat('dd-MMM-yyyy').format(_selectedChequeDate);
+      });
+    }
   }
 
   Future<void> _selectDate() async {
@@ -270,6 +304,7 @@ class _AddPaymentDialogState extends ConsumerState<AddPaymentDialog> {
 
     if (!_formKey.currentState!.validate()) return;
 
+    final isModeCheque = _mode == 'CHEQUE';
     final payment = Payment(
       id: const Uuid().v4(),
       partyId: _selectedParty!.id,
@@ -280,6 +315,10 @@ class _AddPaymentDialogState extends ConsumerState<AddPaymentDialog> {
       referenceNo: _refController.text.trim().isEmpty ? null : _refController.text.trim(),
       notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
       createdAt: DateTime.now(),
+      chequeNo: isModeCheque ? _chequeNoController.text.trim() : null,
+      chequeBank: isModeCheque ? _chequeBankController.text.trim() : null,
+      chequeDate: isModeCheque ? _selectedChequeDate : null,
+      chequeStatus: isModeCheque ? _chequeStatus : null,
     );
 
     try {
@@ -376,6 +415,55 @@ class _AddPaymentDialogState extends ConsumerState<AddPaymentDialog> {
                   }
                 },
               ),
+              if (_mode == 'CHEQUE') ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _chequeNoController,
+                  decoration: const InputDecoration(labelText: 'Cheque Number *'),
+                  validator: (val) {
+                    if (_mode == 'CHEQUE' && (val == null || val.trim().isEmpty)) {
+                      return 'Enter cheque number';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _chequeBankController,
+                  decoration: const InputDecoration(labelText: 'Bank Name *'),
+                  validator: (val) {
+                    if (_mode == 'CHEQUE' && (val == null || val.trim().isEmpty)) {
+                      return 'Enter bank name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _chequeDateController,
+                  readOnly: true,
+                  onTap: _selectChequeDate,
+                  decoration: const InputDecoration(labelText: 'Cheque Date *'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _chequeStatus,
+                  decoration: const InputDecoration(labelText: 'Cheque Status'),
+                  items: const [
+                    DropdownMenuItem(value: 'ISSUED', child: Text('ISSUED / RECEIVED (జారీ/స్వీకరించబడింది)')),
+                    DropdownMenuItem(value: 'CLEARED', child: Text('CLEARED (క్లియర్ అయింది)')),
+                    DropdownMenuItem(value: 'BOUNCED', child: Text('BOUNCED (బౌన్స్ అయింది)')),
+                    DropdownMenuItem(value: 'CANCELLED', child: Text('CANCELLED (రద్దు చేయబడింది)')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _chequeStatus = val;
+                      });
+                    }
+                  },
+                ),
+              ],
               const SizedBox(height: 12),
 
               // Date
