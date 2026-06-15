@@ -8,6 +8,7 @@ import '../../../data/models/voucher.dart';
 import '../../../data/models/voucher_line.dart';
 import '../../../providers/double_entry_provider.dart';
 import '../../../providers/user_provider.dart';
+import '../../../providers/auth_provider.dart';
 
 class VoucherEntryScreen extends ConsumerStatefulWidget {
   const VoucherEntryScreen({super.key});
