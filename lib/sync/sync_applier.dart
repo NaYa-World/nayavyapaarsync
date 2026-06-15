@@ -136,6 +136,39 @@ class SyncApplier {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
+    } else if (tableName == 'vouchers') {
+      final voucherMap = payload['voucher'] as Map<String, dynamic>;
+      final lines = payload['voucher_lines'] as List<dynamic>? ?? [];
+      final billAllocations = payload['bill_allocations'] as List<dynamic>? ?? [];
+      final stockMovements = payload['stock_movements'] as List<dynamic>? ?? [];
+      final bankInstruments = payload['bank_instruments'] as List<dynamic>? ?? [];
+
+      // Cascade delete local dependent rows to prevent orphan/integrity issues
+      await db.delete('voucher_lines', where: 'voucher_id = ?', whereArgs: [recordId]);
+      await db.delete(
+        'bill_allocations',
+        where: 'voucher_line_id IN (SELECT id FROM voucher_lines WHERE voucher_id = ?)',
+        whereArgs: [recordId],
+      );
+      await db.delete('stock_movements', where: 'ref_voucher_id = ?', whereArgs: [recordId]);
+      await db.delete('bank_instruments', where: 'voucher_id = ?', whereArgs: [recordId]);
+
+      // Insert parent
+      await db.insert('vouchers', voucherMap, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      // Re-insert child rows
+      for (final line in lines) {
+        await db.insert('voucher_lines', Map<String, dynamic>.from(line as Map), conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      for (final ba in billAllocations) {
+        await db.insert('bill_allocations', Map<String, dynamic>.from(ba as Map), conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      for (final sm in stockMovements) {
+        await db.insert('stock_movements', Map<String, dynamic>.from(sm as Map), conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      for (final bi in bankInstruments) {
+        await db.insert('bank_instruments', Map<String, dynamic>.from(bi as Map), conflictAlgorithm: ConflictAlgorithm.replace);
+      }
     } else {
       // items, parties, expenses, payments
       await db.insert(
@@ -195,6 +228,48 @@ class SyncApplier {
         result[row['key'] as String] = row['value'];
       }
       return result;
+    } else if (tableName == 'vouchers') {
+      final List<Map<String, dynamic>> voucherMaps = await db.query(
+        'vouchers',
+        where: 'id = ?',
+        whereArgs: [recordId],
+      );
+      if (voucherMaps.isEmpty) return null;
+
+      final List<Map<String, dynamic>> lines = await db.query(
+        'voucher_lines',
+        where: 'voucher_id = ?',
+        whereArgs: [recordId],
+      );
+      final List<String> lineIds = lines.map((l) => l['id'] as String).toList();
+      
+      final List<Map<String, dynamic>> billAllocations = lineIds.isEmpty
+          ? []
+          : await db.query(
+              'bill_allocations',
+              where: 'voucher_line_id IN (${lineIds.map((_) => '?').join(',')})',
+              whereArgs: lineIds,
+            );
+      
+      final List<Map<String, dynamic>> stockMovements = await db.query(
+        'stock_movements',
+        where: 'ref_voucher_id = ?',
+        whereArgs: [recordId],
+      );
+      
+      final List<Map<String, dynamic>> bankInstruments = await db.query(
+        'bank_instruments',
+        where: 'voucher_id = ?',
+        whereArgs: [recordId],
+      );
+
+      return {
+        'voucher': voucherMaps.first,
+        'voucher_lines': lines,
+        'bill_allocations': billAllocations,
+        'stock_movements': stockMovements,
+        'bank_instruments': bankInstruments,
+      };
     } else {
       final List<Map<String, dynamic>> maps = await db.query(
         tableName,
