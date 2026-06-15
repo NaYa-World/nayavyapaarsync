@@ -63,11 +63,29 @@ class UserNotifier extends StateNotifier<AsyncValue<List<AppUser>>> {
   }
 
   /// Validates a PIN for a given user ID. Returns the user if valid, else null.
+  /// Silently upgrades legacy unsalted user PINs to salted key-stretched hashes on successful login.
   Future<AppUser?> authenticate(String userId, String plainPin) async {
     final user = await _repo.getUserById(userId);
     if (user == null) return null;
-    final repo = UserRepository();
-    return repo.validatePin(plainPin, user.pinHash) ? user : null;
+    final isValid = _repo.validatePin(plainPin, user.pinHash, salt: user.salt);
+    if (!isValid) return null;
+
+    if (user.salt == null || user.salt!.isEmpty) {
+      final newSalt = UserRepository.generateSalt();
+      final newHash = UserRepository.hashPinSecure(plainPin, newSalt);
+      final db = await DbHelper().database;
+      await db.update(
+        'app_users',
+        {
+          'pin_hash': newHash,
+          'salt': newSalt,
+        },
+        where: 'id = ?',
+        whereArgs: [user.id],
+      );
+      return user.copyWith(pinHash: newHash, salt: newSalt);
+    }
+    return user;
   }
 }
 

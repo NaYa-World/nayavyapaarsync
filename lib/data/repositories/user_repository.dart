@@ -8,15 +8,38 @@ class UserRepository {
   final DbHelper _dbHelper = DbHelper();
   final Uuid _uuid = const Uuid();
 
-  /// SHA-256 hash of a plain-text PIN
-  static String hashPin(String pin) {
+  /// Legacy SHA-256 hash of a plain-text PIN (unsalted)
+  static String hashPinLegacy(String pin) {
     final bytes = utf8.encode(pin);
     return sha256.convert(bytes).toString();
   }
 
+  /// Salted & key-stretched hashing (1000 iterations of SHA-256)
+  static String hashPinSecure(String pin, String salt) {
+    var input = pin + salt;
+    for (int i = 0; i < 1000; i++) {
+      final bytes = utf8.encode(input);
+      input = sha256.convert(bytes).toString();
+    }
+    return input;
+  }
+
+  /// Backwards-compatible SHA-256 hash
+  static String hashPin(String pin) {
+    return hashPinLegacy(pin);
+  }
+
+  /// Helper to generate a random salt
+  static String generateSalt() {
+    return const Uuid().v4();
+  }
+
   /// Validates a PIN against stored hash
-  bool validatePin(String pin, String storedHash) {
-    return hashPin(pin) == storedHash;
+  bool validatePin(String pin, String storedHash, {String? salt}) {
+    if (salt != null && salt.isNotEmpty) {
+      return hashPinSecure(pin, salt) == storedHash;
+    }
+    return hashPinLegacy(pin) == storedHash;
   }
 
   Future<List<AppUser>> getUsers({bool activeOnly = true}) async {
@@ -37,7 +60,7 @@ class UserRepository {
     return AppUser.fromMap(rows.first);
   }
 
-  /// Creates a new user with a plain-text PIN (hashed internally)
+  /// Creates a new user with a plain-text PIN (hashed securely with salt)
   Future<AppUser> createUser({
     required String name,
     required String plainPin,
@@ -46,10 +69,12 @@ class UserRepository {
     required String deviceId,
   }) async {
     final db = await _dbHelper.database;
+    final salt = generateSalt();
     final user = AppUser(
       id: _uuid.v4(),
       name: name,
-      pinHash: hashPin(plainPin),
+      pinHash: hashPinSecure(plainPin, salt),
+      salt: salt,
       role: role,
       companyId: companyId,
       createdAt: DateTime.now(),
@@ -100,14 +125,19 @@ class UserRepository {
     });
   }
 
-  /// Changes a user's PIN
+  /// Changes a user's PIN securely generating a new salt
   Future<void> changePin(
       String userId, String newPlainPin, String deviceId) async {
     final db = await _dbHelper.database;
+    final newSalt = generateSalt();
+    final newHash = hashPinSecure(newPlainPin, newSalt);
     await db.transaction((txn) async {
       await txn.update(
         'app_users',
-        {'pin_hash': hashPin(newPlainPin)},
+        {
+          'pin_hash': newHash,
+          'salt': newSalt,
+        },
         where: 'id = ?',
         whereArgs: [userId],
       );

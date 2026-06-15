@@ -2,6 +2,7 @@ class AppUser {
   final String id;
   final String name;
   final String pinHash; // SHA-256 of PIN
+  final String? salt;
   final String role; // ADMIN | CA | ACCOUNTANT | MANAGER
   final String? companyId;
   final bool isActive;
@@ -13,6 +14,7 @@ class AppUser {
     required this.id,
     required this.name,
     required this.pinHash,
+    this.salt,
     required this.role,
     this.companyId,
     this.isActive = true,
@@ -48,6 +50,7 @@ class AppUser {
     String? id,
     String? name,
     String? pinHash,
+    String? salt,
     String? role,
     String? companyId,
     bool? isActive,
@@ -57,6 +60,7 @@ class AppUser {
       id: id ?? this.id,
       name: name ?? this.name,
       pinHash: pinHash ?? this.pinHash,
+      salt: salt ?? this.salt,
       role: role ?? this.role,
       companyId: companyId ?? this.companyId,
       isActive: isActive ?? this.isActive,
@@ -69,6 +73,7 @@ class AppUser {
       id: map['id'] as String,
       name: map['name'] as String,
       pinHash: map['pin_hash'] as String,
+      salt: map['salt'] as String?,
       role: map['role'] as String,
       companyId: map['company_id'] as String?,
       isActive: (map['is_active'] as int? ?? 1) == 1,
@@ -81,6 +86,7 @@ class AppUser {
       'id': id,
       'name': name,
       'pin_hash': pinHash,
+      'salt': salt,
       'role': role,
       'company_id': companyId,
       'is_active': isActive ? 1 : 0,
