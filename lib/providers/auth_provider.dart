@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -49,10 +50,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true);
 
     // 1. Get or generate persistent Device ID
-    String? deviceId = await _secureStorage.read(key: _deviceIdKey);
+    String? deviceId;
+    try {
+      deviceId = await _secureStorage.read(key: _deviceIdKey);
+    } on PlatformException {
+      // Keystore corrupted or backup key mismatch -> self-heal
+      await _secureStorage.deleteAll();
+    } catch (_) {
+      await _secureStorage.deleteAll();
+    }
+
     if (deviceId == null || deviceId.isEmpty) {
       deviceId = const Uuid().v4();
-      await _secureStorage.write(key: _deviceIdKey, value: deviceId);
+      try {
+        await _secureStorage.write(key: _deviceIdKey, value: deviceId);
+      } catch (_) {
+        // Fallback if writing fails
+      }
     }
 
     state = state.copyWith(deviceId: deviceId);

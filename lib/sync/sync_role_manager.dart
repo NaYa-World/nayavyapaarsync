@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'manifest_manager.dart';
 
@@ -18,7 +19,15 @@ class SyncRoleManager {
 
   /// Loads cached role from secure storage at app boot as a fallback.
   Future<void> initAtBoot() async {
-    _cachedRole = await _secureStorage.read(key: 'cached_role');
+    try {
+      _cachedRole = await _secureStorage.read(key: 'cached_role');
+    } on PlatformException {
+      await _secureStorage.deleteAll();
+      _cachedRole = null;
+    } catch (_) {
+      await _secureStorage.deleteAll();
+      _cachedRole = null;
+    }
   }
 
   /// Updates the cached role from the Drive manifest registry.
@@ -27,7 +36,11 @@ class SyncRoleManager {
     final deviceMeta = manifest.deviceRegistry[deviceId];
     if (deviceMeta != null) {
       _cachedRole = deviceMeta.role.toUpperCase();
-      await _secureStorage.write(key: 'cached_role', value: _cachedRole);
+      try {
+        await _secureStorage.write(key: 'cached_role', value: _cachedRole);
+      } catch (_) {
+        // Fallback if write fails
+      }
     }
   }
 
