@@ -22,7 +22,7 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     return await openDatabase(
       path,
-      version: 8,
+      version: 11,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -324,6 +324,321 @@ class DbHelper {
         }
       }
     }
+
+    if (oldVersion < 9) {
+      final paymentsExist = (await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='payments'"
+      )).isNotEmpty;
+
+      if (paymentsExist) {
+        // Recreate payments table to update check constraint and indexes
+        await db.execute('ALTER TABLE payments RENAME TO payments_old');
+
+        await db.execute('''
+          CREATE TABLE payments (
+            id TEXT PRIMARY KEY,
+            party_id TEXT NOT NULL,
+            direction TEXT CHECK(direction IN ('RECEIVED', 'PAID')) NOT NULL,
+            amount REAL NOT NULL,
+            mode TEXT CHECK(mode IN ('CASH', 'UPI', 'BANK', 'CHEQUE')) NOT NULL,
+            date TEXT NOT NULL,
+            reference_no TEXT,
+            linked_invoice_id TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            cheque_no TEXT,
+            cheque_bank TEXT,
+            cheque_date TEXT,
+            cheque_status TEXT CHECK(cheque_status IN ('ISSUED','RECEIVED','PENDING','CLEARED','BOUNCED','CANCELLED')),
+            FOREIGN KEY(party_id) REFERENCES parties(id)
+          )
+        ''');
+
+        await db.execute('''
+          INSERT INTO payments (
+            id, party_id, direction, amount, mode, date, reference_no,
+            linked_invoice_id, notes, created_at, is_deleted,
+            cheque_no, cheque_bank, cheque_date, cheque_status
+          )
+          SELECT 
+            id, party_id, direction, amount, mode, date, reference_no,
+            linked_invoice_id, notes, created_at, is_deleted,
+            cheque_no, cheque_bank, cheque_date, cheque_status
+          FROM payments_old
+        ''');
+
+        await db.execute('DROP TABLE payments_old');
+      } else {
+        // Just create the table if it didn't exist
+        await db.execute('''
+          CREATE TABLE payments (
+            id TEXT PRIMARY KEY,
+            party_id TEXT NOT NULL,
+            direction TEXT CHECK(direction IN ('RECEIVED', 'PAID')) NOT NULL,
+            amount REAL NOT NULL,
+            mode TEXT CHECK(mode IN ('CASH', 'UPI', 'BANK', 'CHEQUE')) NOT NULL,
+            date TEXT NOT NULL,
+            reference_no TEXT,
+            linked_invoice_id TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            cheque_no TEXT,
+            cheque_bank TEXT,
+            cheque_date TEXT,
+            cheque_status TEXT CHECK(cheque_status IN ('ISSUED','RECEIVED','PENDING','CLEARED','BOUNCED','CANCELLED')),
+            FOREIGN KEY(party_id) REFERENCES parties(id)
+          )
+        ''');
+      }
+
+      // Create indexes for optimization (only if tables exist)
+      final existingTables = (await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+      )).map((row) => row['name'] as String).toSet();
+
+      if (existingTables.contains('payments')) {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_party_id ON payments(party_id)');
+      }
+      if (existingTables.contains('purchases')) {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_party_id ON purchases(party_id)');
+      }
+      if (existingTables.contains('sales')) {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_party_id ON sales(party_id)');
+      }
+      if (existingTables.contains('financial_years')) {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_financial_years_company_id ON financial_years(company_id)');
+      }
+      if (existingTables.contains('app_users')) {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_app_users_company_id ON app_users(company_id)');
+      }
+    }
+
+    if (oldVersion < 10) {
+      // 1. Ledger Groups
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ledger_groups (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          parent_id TEXT,
+          nature TEXT CHECK(nature IN ('ASSETS', 'LIABILITIES', 'INCOME', 'EXPENSES')) NOT NULL,
+          FOREIGN KEY(parent_id) REFERENCES ledger_groups(id)
+        )
+      ''');
+
+      // 2. Ledgers
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ledgers (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          group_id TEXT NOT NULL,
+          opening_balance REAL NOT NULL DEFAULT 0.0,
+          balance_type TEXT CHECK(balance_type IN ('DR', 'CR')) NOT NULL DEFAULT 'DR',
+          company_id TEXT NOT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(group_id) REFERENCES ledger_groups(id),
+          FOREIGN KEY(company_id) REFERENCES companies(id)
+        )
+      ''');
+
+      // 3. Vouchers
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS vouchers (
+          id TEXT PRIMARY KEY,
+          voucher_no TEXT NOT NULL,
+          type TEXT CHECK(type IN ('SALE', 'PURCHASE', 'RECEIPT', 'PAYMENT', 'CONTRA', 'JOURNAL', 'CREDIT_NOTE', 'DEBIT_NOTE')) NOT NULL,
+          date TEXT NOT NULL,
+          narration TEXT,
+          company_id TEXT NOT NULL,
+          fy_id TEXT NOT NULL,
+          is_locked INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          is_deleted INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY(company_id) REFERENCES companies(id),
+          FOREIGN KEY(fy_id) REFERENCES financial_years(id)
+        )
+      ''');
+
+      // 4. Voucher Lines
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS voucher_lines (
+          id TEXT PRIMARY KEY,
+          voucher_id TEXT NOT NULL,
+          ledger_id TEXT NOT NULL,
+          dr_amount REAL NOT NULL DEFAULT 0.0,
+          cr_amount REAL NOT NULL DEFAULT 0.0,
+          narration TEXT,
+          FOREIGN KEY(voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE,
+          FOREIGN KEY(ledger_id) REFERENCES ledgers(id)
+        )
+      ''');
+
+      // 5. Bill Allocations
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS bill_allocations (
+          id TEXT PRIMARY KEY,
+          voucher_line_id TEXT NOT NULL,
+          ref_voucher_id TEXT NOT NULL,
+          allocated_amount REAL NOT NULL,
+          outstanding_amount REAL NOT NULL,
+          status TEXT CHECK(status IN ('OPEN', 'PART_PAID', 'CLOSED')) NOT NULL DEFAULT 'OPEN',
+          FOREIGN KEY(voucher_line_id) REFERENCES voucher_lines(id) ON DELETE CASCADE,
+          FOREIGN KEY(ref_voucher_id) REFERENCES vouchers(id)
+        )
+      ''');
+
+      // 6. Godowns
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS godowns (
+          id TEXT PRIMARY KEY,
+          company_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          address TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(company_id) REFERENCES companies(id)
+        )
+      ''');
+
+      // 7. Batches
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS batches (
+          id TEXT PRIMARY KEY,
+          stock_item_id TEXT NOT NULL,
+          batch_no TEXT NOT NULL,
+          expiry_date TEXT,
+          mfg_date TEXT,
+          FOREIGN KEY(stock_item_id) REFERENCES items(id)
+        )
+      ''');
+
+      // 8. Stock Movements
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS stock_movements (
+          id TEXT PRIMARY KEY,
+          stock_item_id TEXT NOT NULL,
+          godown_id TEXT NOT NULL,
+          ref_voucher_id TEXT NOT NULL,
+          qty REAL NOT NULL,
+          rate REAL NOT NULL,
+          movement_type TEXT CHECK(movement_type IN ('IN', 'OUT')) NOT NULL,
+          batch_id TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(stock_item_id) REFERENCES items(id),
+          FOREIGN KEY(godown_id) REFERENCES godowns(id),
+          FOREIGN KEY(ref_voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE,
+          FOREIGN KEY(batch_id) REFERENCES batches(id)
+        )
+      ''');
+
+      // 9. Bank Instruments
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS bank_instruments (
+          id TEXT PRIMARY KEY,
+          voucher_id TEXT NOT NULL,
+          instrument_type TEXT CHECK(instrument_type IN ('CHEQUE', 'DD', 'NEFT', 'RTGS', 'UPI')) NOT NULL,
+          instrument_no TEXT,
+          bank_name TEXT,
+          amount REAL NOT NULL,
+          status TEXT CHECK(status IN ('ISSUED', 'RECEIVED', 'PENDING', 'CLEARED', 'BOUNCED', 'CANCELLED')) NOT NULL DEFAULT 'PENDING',
+          cleared_date TEXT,
+          FOREIGN KEY(voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE
+        )
+      ''');
+
+      // 10. Bank Reconciliation
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS bank_reconciliation (
+          id TEXT PRIMARY KEY,
+          ledger_id TEXT NOT NULL,
+          statement_date TEXT NOT NULL,
+          closing_balance_bank REAL NOT NULL,
+          closing_balance_book REAL NOT NULL,
+          difference REAL NOT NULL,
+          reconciled_by TEXT NOT NULL,
+          reconciled_at TEXT NOT NULL,
+          FOREIGN KEY(ledger_id) REFERENCES ledgers(id)
+        )
+      ''');
+
+      // 11. Virtual Tables (FTS5)
+      await db.execute('CREATE VIRTUAL TABLE IF NOT EXISTS fts_vouchers USING fts5(voucher_id, narration, voucher_no)');
+      await db.execute('CREATE VIRTUAL TABLE IF NOT EXISTS fts_ledgers USING fts5(ledger_id, name)');
+
+      // 12. Indexes
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_vouchers_company_date ON vouchers(company_id, date)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_voucher_lines_voucher ON voucher_lines(voucher_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_stock_movements_item ON stock_movements(stock_item_id)');
+    }
+
+    if (oldVersion < 11) {
+      // 1. Alter app_users table to add salt column
+      await db.execute('ALTER TABLE app_users ADD COLUMN salt TEXT');
+
+      // 2. Create triggers for vouchers -> fts_vouchers
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS trg_vouchers_fts_insert AFTER INSERT ON vouchers
+        BEGIN
+          INSERT INTO fts_vouchers(voucher_id, narration, voucher_no)
+          VALUES(new.id, COALESCE(new.narration, ''), new.voucher_no);
+        END;
+      ''');
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS trg_vouchers_fts_update AFTER UPDATE ON vouchers
+        BEGIN
+          UPDATE fts_vouchers
+          SET narration = COALESCE(new.narration, ''),
+              voucher_no = new.voucher_no
+          WHERE voucher_id = new.id;
+        END;
+      ''');
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS trg_vouchers_fts_delete AFTER DELETE ON vouchers
+        BEGIN
+          DELETE FROM fts_vouchers WHERE voucher_id = old.id;
+        END;
+      ''');
+
+      // 3. Create triggers for ledgers -> fts_ledgers
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS trg_ledgers_fts_insert AFTER INSERT ON ledgers
+        BEGIN
+          INSERT INTO fts_ledgers(ledger_id, name)
+          VALUES(new.id, new.name);
+        END;
+      ''');
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS trg_ledgers_fts_update AFTER UPDATE ON ledgers
+        BEGIN
+          UPDATE fts_ledgers
+          SET name = new.name
+          WHERE ledger_id = new.id;
+        END;
+      ''');
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS trg_ledgers_fts_delete AFTER DELETE ON ledgers
+        BEGIN
+          DELETE FROM fts_ledgers WHERE ledger_id = old.id;
+        END;
+      ''');
+
+      // 4. Backfill existing data
+      await db.execute('DELETE FROM fts_vouchers');
+      await db.execute('DELETE FROM fts_ledgers');
+
+      await db.execute('''
+        INSERT INTO fts_vouchers(voucher_id, narration, voucher_no)
+        SELECT id, COALESCE(narration, ''), voucher_no FROM vouchers
+      ''');
+
+      await db.execute('''
+        INSERT INTO fts_ledgers(ledger_id, name)
+        SELECT id, name FROM ledgers
+      ''');
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -473,7 +788,7 @@ class DbHelper {
         cheque_no TEXT,
         cheque_bank TEXT,
         cheque_date TEXT,
-        cheque_status TEXT CHECK(cheque_status IN ('ISSUED','CLEARED','BOUNCED','CANCELLED')),
+        cheque_status TEXT CHECK(cheque_status IN ('ISSUED','RECEIVED','PENDING','CLEARED','BOUNCED','CANCELLED')),
         FOREIGN KEY(party_id) REFERENCES parties(id)
       )
     ''');
@@ -619,6 +934,7 @@ class DbHelper {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         pin_hash TEXT NOT NULL,
+        salt TEXT,
         role TEXT NOT NULL
           CHECK(role IN ('ADMIN','CA','ACCOUNTANT','MANAGER')),
         company_id TEXT,
@@ -666,6 +982,205 @@ class DbHelper {
           CHECK(resolution_source IN ('local', 'remote_sync'))
       )
     ''');
+
+    // Indexes for optimization
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_party_id ON payments(party_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_party_id ON purchases(party_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_party_id ON sales(party_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_financial_years_company_id ON financial_years(company_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_app_users_company_id ON app_users(company_id)');
+
+    // Version 10 Tables
+    await db.execute('''
+      CREATE TABLE ledger_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parent_id TEXT,
+        nature TEXT CHECK(nature IN ('ASSETS', 'LIABILITIES', 'INCOME', 'EXPENSES')) NOT NULL,
+        FOREIGN KEY(parent_id) REFERENCES ledger_groups(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE ledgers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        opening_balance REAL NOT NULL DEFAULT 0.0,
+        balance_type TEXT CHECK(balance_type IN ('DR', 'CR')) NOT NULL DEFAULT 'DR',
+        company_id TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(group_id) REFERENCES ledger_groups(id),
+        FOREIGN KEY(company_id) REFERENCES companies(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE vouchers (
+        id TEXT PRIMARY KEY,
+        voucher_no TEXT NOT NULL,
+        type TEXT CHECK(type IN ('SALE', 'PURCHASE', 'RECEIPT', 'PAYMENT', 'CONTRA', 'JOURNAL', 'CREDIT_NOTE', 'DEBIT_NOTE')) NOT NULL,
+        date TEXT NOT NULL,
+        narration TEXT,
+        company_id TEXT NOT NULL,
+        fy_id TEXT NOT NULL,
+        is_locked INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(company_id) REFERENCES companies(id),
+        FOREIGN KEY(fy_id) REFERENCES financial_years(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE voucher_lines (
+        id TEXT PRIMARY KEY,
+        voucher_id TEXT NOT NULL,
+        ledger_id TEXT NOT NULL,
+        dr_amount REAL NOT NULL DEFAULT 0.0,
+        cr_amount REAL NOT NULL DEFAULT 0.0,
+        narration TEXT,
+        FOREIGN KEY(voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE,
+        FOREIGN KEY(ledger_id) REFERENCES ledgers(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE bill_allocations (
+        id TEXT PRIMARY KEY,
+        voucher_line_id TEXT NOT NULL,
+        ref_voucher_id TEXT NOT NULL,
+        allocated_amount REAL NOT NULL,
+        outstanding_amount REAL NOT NULL,
+        status TEXT CHECK(status IN ('OPEN', 'PART_PAID', 'CLOSED')) NOT NULL DEFAULT 'OPEN',
+        FOREIGN KEY(voucher_line_id) REFERENCES voucher_lines(id) ON DELETE CASCADE,
+        FOREIGN KEY(ref_voucher_id) REFERENCES vouchers(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE godowns (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        address TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(company_id) REFERENCES companies(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE batches (
+        id TEXT PRIMARY KEY,
+        stock_item_id TEXT NOT NULL,
+        batch_no TEXT NOT NULL,
+        expiry_date TEXT,
+        mfg_date TEXT,
+        FOREIGN KEY(stock_item_id) REFERENCES items(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE stock_movements (
+        id TEXT PRIMARY KEY,
+        stock_item_id TEXT NOT NULL,
+        godown_id TEXT NOT NULL,
+        ref_voucher_id TEXT NOT NULL,
+        qty REAL NOT NULL,
+        rate REAL NOT NULL,
+        movement_type TEXT CHECK(movement_type IN ('IN', 'OUT')) NOT NULL,
+        batch_id TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(stock_item_id) REFERENCES items(id),
+        FOREIGN KEY(godown_id) REFERENCES godowns(id),
+        FOREIGN KEY(ref_voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE,
+        FOREIGN KEY(batch_id) REFERENCES batches(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE bank_instruments (
+        id TEXT PRIMARY KEY,
+        voucher_id TEXT NOT NULL,
+        instrument_type TEXT CHECK(instrument_type IN ('CHEQUE', 'DD', 'NEFT', 'RTGS', 'UPI')) NOT NULL,
+        instrument_no TEXT,
+        bank_name TEXT,
+        amount REAL NOT NULL,
+        status TEXT CHECK(status IN ('ISSUED', 'RECEIVED', 'PENDING', 'CLEARED', 'BOUNCED', 'CANCELLED')) NOT NULL DEFAULT 'PENDING',
+        cleared_date TEXT,
+        FOREIGN KEY(voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE bank_reconciliation (
+        id TEXT PRIMARY KEY,
+        ledger_id TEXT NOT NULL,
+        statement_date TEXT NOT NULL,
+        closing_balance_bank REAL NOT NULL,
+        closing_balance_book REAL NOT NULL,
+        difference REAL NOT NULL,
+        reconciled_by TEXT NOT NULL,
+        reconciled_at TEXT NOT NULL,
+        FOREIGN KEY(ledger_id) REFERENCES ledgers(id)
+      )
+    ''');
+
+    await db.execute('CREATE VIRTUAL TABLE fts_vouchers USING fts5(voucher_id, narration, voucher_no)');
+    await db.execute('CREATE VIRTUAL TABLE fts_ledgers USING fts5(ledger_id, name)');
+
+    // Create SQL Triggers for FTS sync
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_vouchers_fts_insert AFTER INSERT ON vouchers
+      BEGIN
+        INSERT INTO fts_vouchers(voucher_id, narration, voucher_no)
+        VALUES(new.id, COALESCE(new.narration, ''), new.voucher_no);
+      END;
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_vouchers_fts_update AFTER UPDATE ON vouchers
+      BEGIN
+        UPDATE fts_vouchers
+        SET narration = COALESCE(new.narration, ''),
+            voucher_no = new.voucher_no
+        WHERE voucher_id = new.id;
+      END;
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_vouchers_fts_delete AFTER DELETE ON vouchers
+      BEGIN
+        DELETE FROM fts_vouchers WHERE voucher_id = old.id;
+      END;
+    ''');
+
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_ledgers_fts_insert AFTER INSERT ON ledgers
+      BEGIN
+        INSERT INTO fts_ledgers(ledger_id, name)
+        VALUES(new.id, new.name);
+      END;
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_ledgers_fts_update AFTER UPDATE ON ledgers
+      BEGIN
+        UPDATE fts_ledgers
+        SET name = new.name
+        WHERE ledger_id = new.id;
+      END;
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_ledgers_fts_delete AFTER DELETE ON ledgers
+      BEGIN
+        DELETE FROM fts_ledgers WHERE ledger_id = old.id;
+      END;
+    ''');
+
+    await db.execute('CREATE INDEX idx_vouchers_company_date ON vouchers(company_id, date)');
+    await db.execute('CREATE INDEX idx_voucher_lines_voucher ON voucher_lines(voucher_id)');
+    await db.execute('CREATE INDEX idx_stock_movements_item ON stock_movements(stock_item_id)');
   }
 
   /// Close connection
