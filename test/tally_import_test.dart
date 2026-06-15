@@ -115,5 +115,75 @@ void main() {
       expect(sales.length, 1);
       expect(sales.first['invoice_no'], 'SAL-TALLY-001');
     });
+
+    test('Tally XML Import Idempotency and Duplicate Guard', () async {
+      const tallyXml = '''
+<ENVELOPE>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDATA>
+        <TALLYMESSAGE TALLYBUILDNO="100">
+          <COMPANY NAME="Balaji Trading Co">
+            <NAME>Balaji Trading Co</NAME>
+          </COMPANY>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <LEDGER NAME="Sri Balaji Agro">
+            <PARENT>Sundry Creditors</PARENT>
+          </LEDGER>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <VOUCHER VCHTYPE="Purchase" VOUCHERNUMBER="PUR-IDEMP-001">
+            <DATE>20260601</DATE>
+            <PARTYLEDGERNAME>Sri Balaji Agro</PARTYLEDGERNAME>
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Super Hybrid Maize</STOCKITEMNAME>
+              <BILLEDQTY>100.0 BAG</BILLEDQTY>
+              <RATE>100.0</RATE>
+              <AMOUNT>-10000.0</AMOUNT>
+            </ALLINVENTORYENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+''';
+
+      // First import
+      final result1 = await TallyImportService().importTallyXml(tallyXml);
+      expect(result1.purchasesImported, 1);
+      expect(result1.logs.any((l) => l.contains('Detected Tally Version: Tally Prime')), true);
+      expect(result1.logs.any((l) => l.contains('Company detected: Balaji Trading Co')), true);
+
+      // Second import (should skip voucher)
+      final result2 = await TallyImportService().importTallyXml(tallyXml);
+      expect(result2.purchasesImported, 0); // Idempotent!
+      expect(result2.logs.any((l) => l.contains('Duplicate voucher skipped')), true);
+    });
+
+    test('Tally Build Version and Multi-Company Detection', () async {
+      const multiCompanyXml = '''
+<ENVELOPE>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDATA>
+        <TALLYMESSAGE TALLYBUILDNO="72">
+          <COMPANY NAME="Company Alpha"></COMPANY>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE TALLYBUILDNO="72">
+          <COMPANY NAME="Company Beta"></COMPANY>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+''';
+
+      final result = await TallyImportService().importTallyXml(multiCompanyXml);
+      expect(result.logs.any((l) => l.contains('Detected Tally Version: Tally 7.2')), true);
+      expect(result.logs.any((l) => l.contains('Found multiple companies: Company Alpha, Company Beta')), true);
+      expect(result.logs.any((l) => l.contains('Selected company for import: Company Alpha')), true);
+    });
   });
 }
