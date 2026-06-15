@@ -18,8 +18,10 @@ import '../recycle_bin/recycle_bin_screen.dart';
 import '../reports/reports_screen.dart';
 import '../sale/sale_entry_screen.dart';
 import '../settings/settings_screen.dart';
+import '../settings/user_management_screen.dart';
 import '../stock/stock_register_screen.dart';
 import '../expense/expense_list_screen.dart';
+import '../company/company_list_screen.dart';
 import '../reports/gst_report_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -841,6 +843,23 @@ class DashboardScreen extends ConsumerWidget {
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const RecycleBinScreen()));
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.business_rounded),
+                  title: const Text('Companies & FY'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanyListScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.manage_accounts_rounded),
+                  title: const Text('User Management'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const UserManagementScreen()));
                   },
                 ),
                 const Divider(),
