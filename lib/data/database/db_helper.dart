@@ -208,22 +208,29 @@ class DbHelper {
       ''');
 
       // Seed first company from existing settings
-      final settingsRows = await db.query('settings');
+      final settingsExist = (await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
+      )).isNotEmpty;
+
       String firmName = 'My Company';
       String? gstin;
       String? address;
       String? phone;
       String state = 'Telangana';
       String stateCode = '36';
-      for (final row in settingsRows) {
-        final k = row['key'] as String;
-        final v = row['value'] as String;
-        if (k == 'firm_name' && v.trim().isNotEmpty) firmName = v.trim();
-        if (k == 'gstin' && v.trim().isNotEmpty) gstin = v.trim();
-        if (k == 'address' && v.trim().isNotEmpty) address = v.trim();
-        if (k == 'phone' && v.trim().isNotEmpty) phone = v.trim();
-        if (k == 'state' && v.trim().isNotEmpty) state = v.trim();
-        if (k == 'state_code' && v.trim().isNotEmpty) stateCode = v.trim();
+
+      if (settingsExist) {
+        final settingsRows = await db.query('settings');
+        for (final row in settingsRows) {
+          final k = row['key'] as String;
+          final v = row['value'] as String;
+          if (k == 'firm_name' && v.trim().isNotEmpty) firmName = v.trim();
+          if (k == 'gstin' && v.trim().isNotEmpty) gstin = v.trim();
+          if (k == 'address' && v.trim().isNotEmpty) address = v.trim();
+          if (k == 'phone' && v.trim().isNotEmpty) phone = v.trim();
+          if (k == 'state' && v.trim().isNotEmpty) state = v.trim();
+          if (k == 'state_code' && v.trim().isNotEmpty) stateCode = v.trim();
+        }
       }
       final existingCompanies = await db.query('companies', limit: 1);
       if (existingCompanies.isEmpty) {
@@ -293,22 +300,28 @@ class DbHelper {
       ''');
 
       // ── 4. Cheque columns on payments ───────────────────────────────────
-      // Guard: only add if not already present (safe re-run)
-      final paymentInfo = await db.rawQuery("PRAGMA table_info(payments)");
-      final existingCols = paymentInfo.map((r) => r['name'] as String).toSet();
-      if (!existingCols.contains('cheque_no')) {
-        await db.execute('ALTER TABLE payments ADD COLUMN cheque_no TEXT');
-      }
-      if (!existingCols.contains('cheque_bank')) {
-        await db.execute('ALTER TABLE payments ADD COLUMN cheque_bank TEXT');
-      }
-      if (!existingCols.contains('cheque_date')) {
-        await db.execute('ALTER TABLE payments ADD COLUMN cheque_date TEXT');
-      }
-      if (!existingCols.contains('cheque_status')) {
-        await db.execute(
-            "ALTER TABLE payments ADD COLUMN cheque_status TEXT "
-            "CHECK(cheque_status IN ('ISSUED','CLEARED','BOUNCED','CANCELLED'))");
+      // Guard: only add if table exists and not already present (safe re-run)
+      final paymentsExist = (await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='payments'"
+      )).isNotEmpty;
+
+      if (paymentsExist) {
+        final paymentInfo = await db.rawQuery("PRAGMA table_info(payments)");
+        final existingCols = paymentInfo.map((r) => r['name'] as String).toSet();
+        if (!existingCols.contains('cheque_no')) {
+          await db.execute('ALTER TABLE payments ADD COLUMN cheque_no TEXT');
+        }
+        if (!existingCols.contains('cheque_bank')) {
+          await db.execute('ALTER TABLE payments ADD COLUMN cheque_bank TEXT');
+        }
+        if (!existingCols.contains('cheque_date')) {
+          await db.execute('ALTER TABLE payments ADD COLUMN cheque_date TEXT');
+        }
+        if (!existingCols.contains('cheque_status')) {
+          await db.execute(
+              "ALTER TABLE payments ADD COLUMN cheque_status TEXT "
+              "CHECK(cheque_status IN ('ISSUED','CLEARED','BOUNCED','CANCELLED'))");
+        }
       }
     }
   }
@@ -457,6 +470,10 @@ class DbHelper {
         notes TEXT,
         created_at TEXT NOT NULL,
         is_deleted INTEGER NOT NULL DEFAULT 0,
+        cheque_no TEXT,
+        cheque_bank TEXT,
+        cheque_date TEXT,
+        cheque_status TEXT CHECK(cheque_status IN ('ISSUED','CLEARED','BOUNCED','CANCELLED')),
         FOREIGN KEY(party_id) REFERENCES parties(id)
       )
     ''');
