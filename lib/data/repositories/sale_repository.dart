@@ -4,6 +4,7 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/invoice_number.dart';
 import '../models/sale.dart';
 import '../database/db_helper.dart';
+import '../../core/utils/fy_guard.dart';
 
 class SaleWithItems {
   final Sale sale;
@@ -84,8 +85,8 @@ class SaleRepository {
     );
   }
 
-  /// Inserts a new sale transaction
   Future<void> insertSale(Sale sale, List<SaleItem> items, String deviceId) async {
+    await FyGuard.checkDate(date: sale.date);
     final db = await _dbHelper.database;
 
     await db.transaction((txn) async {
@@ -137,6 +138,9 @@ class SaleRepository {
     
     final currentData = await getSale(sale.id);
     if (currentData == null) return;
+
+    await FyGuard.checkDate(date: currentData.sale.date);
+    await FyGuard.checkDate(date: sale.date);
 
     final oldPayload = {
       'sale': currentData.sale.toMap(),
@@ -214,6 +218,8 @@ class SaleRepository {
     final db = await _dbHelper.database;
     final currentData = await getSale(id);
     if (currentData == null) return;
+
+    await FyGuard.checkDate(date: currentData.sale.date);
 
     final oldPayload = {
       'sale': currentData.sale.toMap(),

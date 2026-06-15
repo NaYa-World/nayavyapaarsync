@@ -22,25 +22,34 @@ class FyGuard {
 
   static final DbHelper _db = DbHelper();
 
-  /// Checks if [date] falls in a locked financial year for [companyId].
-  ///
-  /// If companyId is null (legacy single-company mode), check is skipped.
-  /// Throws [LockedPeriodException] if the period is locked.
   static Future<void> checkDate({
     required DateTime date,
     String? companyId,
   }) async {
-    // If no company context, skip guard (backward compatibility)
-    if (companyId == null) return;
-
     final db = await _db.database;
+
+    String? resolvedCompanyId = companyId;
+    if (resolvedCompanyId == null) {
+      final compRows = await db.query(
+        'companies',
+        columns: ['id'],
+        where: 'is_active = 1',
+        limit: 1,
+      );
+      if (compRows.isNotEmpty) {
+        resolvedCompanyId = compRows.first['id'] as String?;
+      }
+    }
+
+    if (resolvedCompanyId == null) return;
+
     final dateStr = date.toIso8601String().substring(0, 10);
 
     final rows = await db.query(
       'financial_years',
       where:
           'company_id = ? AND start_date <= ? AND end_date >= ? AND is_locked = 1',
-      whereArgs: [companyId, dateStr, dateStr],
+      whereArgs: [resolvedCompanyId, dateStr, dateStr],
     );
 
     if (rows.isNotEmpty) {
@@ -55,7 +64,6 @@ class FyGuard {
     required DateTime date,
     String? companyId,
   }) async {
-    if (companyId == null) return false;
     try {
       await checkDate(date: date, companyId: companyId);
       return false;

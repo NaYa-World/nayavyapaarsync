@@ -4,6 +4,7 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/invoice_number.dart';
 import '../models/purchase.dart';
 import '../database/db_helper.dart';
+import '../../core/utils/fy_guard.dart';
 
 class PurchaseWithItems {
   final Purchase purchase;
@@ -86,6 +87,7 @@ class PurchaseRepository {
 
   /// Inserts a new purchase transaction
   Future<void> insertPurchase(Purchase purchase, List<PurchaseItem> items, String deviceId) async {
+    await FyGuard.checkDate(date: purchase.date);
     final db = await _dbHelper.database;
 
     await db.transaction((txn) async {
@@ -137,6 +139,9 @@ class PurchaseRepository {
     
     final currentData = await getPurchase(purchase.id);
     if (currentData == null) return;
+
+    await FyGuard.checkDate(date: currentData.purchase.date);
+    await FyGuard.checkDate(date: purchase.date);
 
     final oldPayload = {
       'purchase': currentData.purchase.toMap(),
@@ -214,6 +219,8 @@ class PurchaseRepository {
     final db = await _dbHelper.database;
     final currentData = await getPurchase(id);
     if (currentData == null) return;
+
+    await FyGuard.checkDate(date: currentData.purchase.date);
 
     final oldPayload = {
       'purchase': currentData.purchase.toMap(),
