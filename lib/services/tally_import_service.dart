@@ -1,9 +1,13 @@
 import 'package:uuid/uuid.dart';
+import 'package:sqflite/sqflite.dart';
 import '../data/database/db_helper.dart';
 import '../data/models/item.dart';
 import '../data/models/party.dart';
 import '../data/models/purchase.dart';
 import '../data/models/sale.dart';
+import '../data/models/voucher.dart';
+import '../data/models/voucher_line.dart';
+import '../data/models/stock_movement.dart';
 
 class TallyImportResult {
   final int partiesImported;
@@ -39,6 +43,102 @@ class TallyImportService {
   String? _extractAttribute(String openingTag, String attrName) {
     final match = RegExp('$attrName="([^"]*)"', caseSensitive: false).firstMatch(openingTag);
     return match?.group(1);
+  }
+
+  /// Helper to ensure default groups, ledgers, and godowns exist for double-entry tracking
+  Future<void> _ensureDefaultGroupsAndLedgers(Transaction txn) async {
+    // 1. Ensure basic ledger groups exist
+    final List<Map<String, dynamic>> groups = [
+      {'id': 'grp_assets', 'name': 'Current Assets', 'parent_id': null, 'nature': 'ASSETS'},
+      {'id': 'grp_debtors', 'name': 'Sundry Debtors', 'parent_id': 'grp_assets', 'nature': 'ASSETS'},
+      {'id': 'grp_cash', 'name': 'Cash-in-hand', 'parent_id': 'grp_assets', 'nature': 'ASSETS'},
+      {'id': 'grp_bank', 'name': 'Bank Accounts', 'parent_id': 'grp_assets', 'nature': 'ASSETS'},
+      {'id': 'grp_liabilities', 'name': 'Current Liabilities', 'parent_id': null, 'nature': 'LIABILITIES'},
+      {'id': 'grp_creditors', 'name': 'Sundry Creditors', 'parent_id': 'grp_liabilities', 'nature': 'LIABILITIES'},
+      {'id': 'grp_income', 'name': 'Sales Accounts', 'parent_id': null, 'nature': 'INCOME'},
+      {'id': 'grp_expenses', 'name': 'Purchase Accounts', 'parent_id': null, 'nature': 'EXPENSES'},
+    ];
+
+    for (final grp in groups) {
+      final existing = await txn.query('ledger_groups', where: 'id = ?', whereArgs: [grp['id']]);
+      if (existing.isEmpty) {
+        await txn.insert('ledger_groups', grp);
+      }
+    }
+
+    // 2. Ensure standard ledgers exist
+    final String nowStr = DateTime.now().toIso8601String();
+    final List<Map<String, dynamic>> ledgers = [
+      {
+        'id': 'led_cash',
+        'name': 'Cash Account',
+        'group_id': 'grp_cash',
+        'opening_balance': 0.0,
+        'balance_type': 'DR',
+        'company_id': 'company_default',
+        'is_active': 1,
+        'created_at': nowStr,
+      },
+      {
+        'id': 'led_sales_ac',
+        'name': 'Product Sales',
+        'group_id': 'grp_income',
+        'opening_balance': 0.0,
+        'balance_type': 'CR',
+        'company_id': 'company_default',
+        'is_active': 1,
+        'created_at': nowStr,
+      },
+      {
+        'id': 'led_purchases_ac',
+        'name': 'Product Purchases',
+        'group_id': 'grp_expenses',
+        'opening_balance': 0.0,
+        'balance_type': 'DR',
+        'company_id': 'company_default',
+        'is_active': 1,
+        'created_at': nowStr,
+      },
+      {
+        'id': 'led_gst_output',
+        'name': 'GST Output',
+        'group_id': 'grp_liabilities',
+        'opening_balance': 0.0,
+        'balance_type': 'CR',
+        'company_id': 'company_default',
+        'is_active': 1,
+        'created_at': nowStr,
+      },
+      {
+        'id': 'led_gst_input',
+        'name': 'GST Input',
+        'group_id': 'grp_assets',
+        'opening_balance': 0.0,
+        'balance_type': 'DR',
+        'company_id': 'company_default',
+        'is_active': 1,
+        'created_at': nowStr,
+      },
+    ];
+
+    for (final led in ledgers) {
+      final existing = await txn.query('ledgers', where: 'id = ?', whereArgs: [led['id']]);
+      if (existing.isEmpty) {
+        await txn.insert('ledgers', led);
+      }
+    }
+
+    // 3. Ensure a default godown exists
+    final existingGodown = await txn.query('godowns', where: 'id = ?', whereArgs: ['godown_default']);
+    if (existingGodown.isEmpty) {
+      await txn.insert('godowns', {
+        'id': 'godown_default',
+        'company_id': 'company_default',
+        'name': 'Main Godown',
+        'is_active': 1,
+        'created_at': nowStr,
+      });
+    }
   }
 
   /// Parses Tally XML string and imports masters and vouchers in a single transaction
@@ -127,6 +227,31 @@ class TallyImportService {
 
     // Run everything in a single transaction
     await db.transaction((txn) async {
+      // 0. Ensure default groups, ledgers, and godowns exist
+      await _ensureDefaultGroupsAndLedgers(txn);
+
+      // Ensure existing parties have corresponding ledgers
+      final List<Map<String, dynamic>> allParties = await txn.query('parties');
+      for (final p in allParties) {
+        final pId = p['id'] as String;
+        final pName = p['name'] as String;
+        final pType = p['type'] as String;
+        final ledgerId = 'led_$pId';
+        final existingLedger = await txn.query('ledgers', where: 'id = ?', whereArgs: [ledgerId]);
+        if (existingLedger.isEmpty) {
+          await txn.insert('ledgers', {
+            'id': ledgerId,
+            'name': pName,
+            'group_id': pType == 'CUSTOMER' ? 'grp_debtors' : 'grp_creditors',
+            'opening_balance': p['opening_balance'] ?? 0.0,
+            'balance_type': p['balance_type'] ?? (pType == 'CUSTOMER' ? 'DR' : 'CR'),
+            'company_id': 'company_default',
+            'is_active': 1,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+        }
+      }
+
       // 1. Parse LEDGER tags (Parties)
       final ledgerMatches = RegExp(r'<LEDGER([^>]*)>([\s\S]*?)</LEDGER>', caseSensitive: false).allMatches(xmlContent);
       final Map<String, String> partyNameToIdMap = {};
@@ -182,6 +307,20 @@ class TallyImportService {
         );
 
         await txn.insert('parties', party.toMap());
+
+        // Insert corresponding ledger
+        final String ledgerId = 'led_$partyId';
+        await txn.insert('ledgers', {
+          'id': ledgerId,
+          'name': name,
+          'group_id': partyType == 'CUSTOMER' ? 'grp_debtors' : 'grp_creditors',
+          'opening_balance': 0.0,
+          'balance_type': partyType == 'CUSTOMER' ? 'DR' : 'CR',
+          'company_id': 'company_default',
+          'is_active': 1,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+
         existingParties[key] = partyId;
         partyNameToIdMap[key] = partyId;
         partiesImported++;
@@ -293,6 +432,20 @@ class TallyImportService {
             createdAt: DateTime.now(),
           );
           await txn.insert('parties', party.toMap());
+
+          // Insert corresponding ledger
+          final String ledgerId = 'led_$partyId';
+          await txn.insert('ledgers', {
+            'id': ledgerId,
+            'name': partyName.trim(),
+            'group_id': partyType == 'CUSTOMER' ? 'grp_debtors' : 'grp_creditors',
+            'opening_balance': 0.0,
+            'balance_type': partyType == 'CUSTOMER' ? 'DR' : 'CR',
+            'company_id': 'company_default',
+            'is_active': 1,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+
           partyNameToIdMap[partyName.toLowerCase()] = partyId;
           partiesImported++;
         }
@@ -373,6 +526,18 @@ class TallyImportService {
         final grandTotal = subtotal + gstTotal;
         final transactionId = _uuid.v4();
 
+        // Resolve Financial Year dynamically
+        String fyId = 'fy_default';
+        final List<Map<String, dynamic>> fyRows = await txn.query(
+          'financial_years',
+          where: 'company_id = ? AND start_date <= ? AND end_date >= ?',
+          whereArgs: ['company_default', date.toIso8601String().substring(0, 10), date.toIso8601String().substring(0, 10)],
+          limit: 1,
+        );
+        if (fyRows.isNotEmpty) {
+          fyId = fyRows.first['id'] as String;
+        }
+
         if (isSale) {
           final sale = Sale(
             id: transactionId,
@@ -412,6 +577,70 @@ class TallyImportService {
               unitPrice: item['rate'],
             );
             await txn.insert('sale_items', saleItem.toMap());
+          }
+
+          // ─── Double-Entry Voucher Seeding ───
+          final doubleEntryVoucher = Voucher(
+            id: transactionId,
+            voucherNo: invoiceNo,
+            type: 'SALE',
+            date: date,
+            narration: 'Tally Import: $invoiceNo',
+            companyId: 'company_default',
+            fyId: fyId,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          await txn.insert('vouchers', doubleEntryVoucher.toMap());
+
+          // DR Customer
+          final lineParty = VoucherLine(
+            id: _uuid.v4(),
+            voucherId: transactionId,
+            ledgerId: 'led_$partyId',
+            drAmount: grandTotal,
+            crAmount: 0.0,
+            narration: 'To party account',
+          );
+          await txn.insert('voucher_lines', lineParty.toMap());
+
+          // CR Product Sales
+          final lineSales = VoucherLine(
+            id: _uuid.v4(),
+            voucherId: transactionId,
+            ledgerId: 'led_sales_ac',
+            drAmount: 0.0,
+            crAmount: subtotal,
+            narration: 'Sales revenue',
+          );
+          await txn.insert('voucher_lines', lineSales.toMap());
+
+          // CR GST Output
+          if (gstTotal > 0) {
+            final lineGst = VoucherLine(
+              id: _uuid.v4(),
+              voucherId: transactionId,
+              ledgerId: 'led_gst_output',
+              drAmount: 0.0,
+              crAmount: gstTotal,
+              narration: 'GST tax collected',
+            );
+            await txn.insert('voucher_lines', lineGst.toMap());
+          }
+
+          // ─── Stock Movements Seeding ───
+          for (final item in parsedItems) {
+            final movement = StockMovement(
+              id: _uuid.v4(),
+              stockItemId: item['item_id'] as String,
+              godownId: 'godown_default',
+              refVoucherId: transactionId,
+              qty: item['qty'] as double,
+              rate: item['rate'] as double,
+              movementType: 'OUT',
+              createdAt: date,
+            );
+            await txn.insert('stock_movements', movement.toMap());
           }
 
           salesImported++;
@@ -455,6 +684,70 @@ class TallyImportService {
             await txn.insert('purchase_items', purchaseItem.toMap());
           }
 
+          // ─── Double-Entry Voucher Seeding ───
+          final doubleEntryVoucher = Voucher(
+            id: transactionId,
+            voucherNo: invoiceNo,
+            type: 'PURCHASE',
+            date: date,
+            narration: 'Tally Import: $invoiceNo',
+            companyId: 'company_default',
+            fyId: fyId,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          await txn.insert('vouchers', doubleEntryVoucher.toMap());
+
+          // CR Supplier
+          final lineParty = VoucherLine(
+            id: _uuid.v4(),
+            voucherId: transactionId,
+            ledgerId: 'led_$partyId',
+            drAmount: 0.0,
+            crAmount: grandTotal,
+            narration: 'From supplier account',
+          );
+          await txn.insert('voucher_lines', lineParty.toMap());
+
+          // DR Product Purchases
+          final linePurchases = VoucherLine(
+            id: _uuid.v4(),
+            voucherId: transactionId,
+            ledgerId: 'led_purchases_ac',
+            drAmount: subtotal,
+            crAmount: 0.0,
+            narration: 'Purchase cost',
+          );
+          await txn.insert('voucher_lines', linePurchases.toMap());
+
+          // DR GST Input
+          if (gstTotal > 0) {
+            final lineGst = VoucherLine(
+              id: _uuid.v4(),
+              voucherId: transactionId,
+              ledgerId: 'led_gst_input',
+              drAmount: gstTotal,
+              crAmount: 0.0,
+              narration: 'GST tax input credit',
+            );
+            await txn.insert('voucher_lines', lineGst.toMap());
+          }
+
+          // ─── Stock Movements Seeding ───
+          for (final item in parsedItems) {
+            final movement = StockMovement(
+              id: _uuid.v4(),
+              stockItemId: item['item_id'] as String,
+              godownId: 'godown_default',
+              refVoucherId: transactionId,
+              qty: item['qty'] as double,
+              rate: item['rate'] as double,
+              movementType: 'IN',
+              createdAt: date,
+            );
+            await txn.insert('stock_movements', movement.toMap());
+          }
+
           purchasesImported++;
         }
       }
@@ -469,4 +762,3 @@ class TallyImportService {
     );
   }
 }
-
