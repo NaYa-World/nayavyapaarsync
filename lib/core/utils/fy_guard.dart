@@ -25,7 +25,12 @@ class FyGuard {
   static Future<void> checkDate({
     required DateTime date,
     String? companyId,
+    String? userRole,
   }) async {
+    if (userRole == 'CA' || userRole == 'ADMIN') {
+      return; // Auditor / Administrator bypass
+    }
+
     final db = await _db.database;
 
     String? resolvedCompanyId = companyId;
@@ -63,9 +68,10 @@ class FyGuard {
   static Future<bool> isDateLocked({
     required DateTime date,
     String? companyId,
+    String? userRole,
   }) async {
     try {
-      await checkDate(date: date, companyId: companyId);
+      await checkDate(date: date, companyId: companyId, userRole: userRole);
       return false;
     } on LockedPeriodException {
       return true;

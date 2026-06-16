@@ -212,5 +212,51 @@ void main() {
       expect(fetchedSale, isNotNull);
       expect(fetchedSale!.sale.invoiceNo, 'SAL/2026-27/001');
     });
+
+    test('FyGuard bypasses lock for CA and ADMIN roles', () async {
+      final db = await dbHelper.database;
+      await db.delete('financial_years');
+      await db.delete('companies');
+
+      // Seed active company
+      await db.insert('companies', {
+        'id': 'comp_test',
+        'name': 'Test Company',
+        'is_active': 1,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      // Seed locked FY
+      await db.insert('financial_years', {
+        'id': 'fy_test_locked',
+        'company_id': 'comp_test',
+        'label': 'FY 26-27',
+        'start_date': '2026-04-01',
+        'end_date': '2027-03-31',
+        'is_locked': 1,
+        'locked_by': 'admin',
+        'locked_at': DateTime.now().toIso8601String(),
+      });
+
+      final lockedDate = DateTime(2026, 6, 15);
+
+      // Verify that CA bypasses
+      await FyGuard.checkDate(date: lockedDate, userRole: 'CA');
+      final caLocked = await FyGuard.isDateLocked(date: lockedDate, userRole: 'CA');
+      expect(caLocked, isFalse);
+
+      // Verify that ADMIN bypasses
+      await FyGuard.checkDate(date: lockedDate, userRole: 'ADMIN');
+      final adminLocked = await FyGuard.isDateLocked(date: lockedDate, userRole: 'ADMIN');
+      expect(adminLocked, isFalse);
+
+      // Verify that ACCOUNTANT is still blocked
+      expect(
+        () => FyGuard.checkDate(date: lockedDate, userRole: 'ACCOUNTANT'),
+        throwsA(isA<LockedPeriodException>()),
+      );
+      final accLocked = await FyGuard.isDateLocked(date: lockedDate, userRole: 'ACCOUNTANT');
+      expect(accLocked, isTrue);
+    });
   });
 }

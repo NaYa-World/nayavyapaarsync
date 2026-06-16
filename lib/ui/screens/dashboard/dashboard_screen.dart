@@ -23,6 +23,8 @@ import '../stock/stock_register_screen.dart';
 import '../expense/expense_list_screen.dart';
 import '../company/company_list_screen.dart';
 import '../reports/gst_report_screen.dart';
+import '../voucher/voucher_entry_screen.dart';
+import '../brs/brs_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -681,6 +683,22 @@ class DashboardScreen extends ConsumerWidget {
           Colors.indigo.shade800,
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GSTReportScreen())),
         ),
+        _buildActionTile(
+          context,
+          'Voucher Entry',
+          'డబుల్ పద్దు',
+          Icons.swap_horiz_rounded,
+          Colors.purple.shade800,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VoucherEntryScreen())),
+        ),
+        _buildActionTile(
+          context,
+          'Bank Recon BRS',
+          'బ్యాంక్ సమన్వయము',
+          Icons.account_balance_rounded,
+          Colors.blueGrey.shade800,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BrsScreen())),
+        ),
       ],
     );
   }
@@ -827,6 +845,22 @@ class DashboardScreen extends ConsumerWidget {
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const GSTReportScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.swap_horiz_rounded),
+                  title: const Text('Voucher Entry'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const VoucherEntryScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.account_balance_rounded),
+                  title: const Text('Bank Reconciliation (BRS)'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const BrsScreen()));
                   },
                 ),
                 ListTile(
