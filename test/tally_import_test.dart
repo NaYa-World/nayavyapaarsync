@@ -185,5 +185,67 @@ void main() {
       expect(result.logs.any((l) => l.contains('Found multiple companies: Company Alpha, Company Beta')), true);
       expect(result.logs.any((l) => l.contains('Selected company for import: Company Alpha')), true);
     });
+    test('StockIn Voucher Import and Nested GST Parsing', () async {
+      const stockInXml = '''
+<ENVELOPE>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDATA>
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="Nested GST Item" RESERVEDNAME="">
+            <PARENT>Agro Chemicals</PARENT>
+            <BASEUNITS>BOX</BASEUNITS>
+            <HSNCODE>3808</HSNCODE>
+            <GSTDETAILS.LIST>
+              <STATEGSTDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATE>18.00</GSTRATE>
+                </RATEDETAILS.LIST>
+              </STATEGSTDETAILS.LIST>
+            </GSTDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <VOUCHER VCHTYPE="StockIn" VOUCHERNUMBER="STK-IN-001">
+            <DATE>20260605</DATE>
+            <!-- Missing PARTYLEDGERNAME intentionally -->
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Nested GST Item</STOCKITEMNAME>
+              <BILLEDQTY>50.0 BOX</BILLEDQTY>
+              <RATE>200.0</RATE>
+              <AMOUNT>-10000.0</AMOUNT>
+              <BATCHNAME>BATCH-STK-11</BATCHNAME>
+            </ALLINVENTORYENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+''';
+
+      final result = await TallyImportService().importTallyXml(stockInXml);
+      expect(result.itemsImported, 1);
+      expect(result.purchasesImported, 1); // StockIn should be parsed as purchase
+
+      final db = await dbHelper.database;
+      
+      final items = await db.query('items');
+      expect(items.length, 1);
+      expect(items.first['gst_rate'], 18.0);
+      expect(items.first['stock_group'], 'Agro Chemicals');
+
+      final purchases = await db.query('purchases');
+      expect(purchases.length, 1);
+      expect(purchases.first['invoice_no'], 'STK-IN-001');
+
+      final parties = await db.query('parties', where: 'id = ?', whereArgs: [purchases.first['party_id']]);
+      expect(parties.first['name'], 'Stock Adjustment Supplier');
+
+      final stockMovements = await db.query('stock_movements');
+      expect(stockMovements.length, 1);
+      expect(stockMovements.first['qty'], 50.0);
+      expect(stockMovements.first['movement_type'], 'IN');
+    });
   });
 }

@@ -254,11 +254,10 @@ class TallyImportService {
 
       // 1. Parse LEDGER tags (Parties)
       final ledgerMatches = RegExp(r'<LEDGER([^>]*)>([\s\S]*?)</LEDGER>', caseSensitive: false).allMatches(xmlContent);
-      final Map<String, String> partyNameToIdMap = {};
 
-      // Get existing parties to avoid duplicates
+      // Get existing parties to avoid duplicates and map them
       final List<Map<String, dynamic>> existingPartiesRows = await txn.query('parties');
-      final Map<String, String> existingParties = {
+      final Map<String, String> partyNameToIdMap = {
         for (final r in existingPartiesRows) (r['name'] as String).toLowerCase(): r['id'] as String
       };
 
@@ -286,14 +285,18 @@ class TallyImportService {
         }
 
         final String key = name.toLowerCase();
-        if (existingParties.containsKey(key)) {
-          partyNameToIdMap[key] = existingParties[key]!;
+        if (partyNameToIdMap.containsKey(key)) {
           continue;
         }
 
-        final address = _extractTag(body, 'ADDRESS') ?? '';
-        final gstin = _extractTag(body, 'GSTIN') ?? _extractTag(body, 'PARTYGSTIN') ?? '';
-        final phone = _extractTag(body, 'LEDGERPHONE') ?? _extractTag(body, 'PHONE') ?? '';
+        final addressVal = _extractTag(body, 'ADDRESS') ?? '';
+        final address = addressVal.isNotEmpty ? addressVal : (_extractTag(body, 'LEDSTATENAME') ?? '');
+
+        final gstinVal = _extractTag(body, 'GSTIN') ?? '';
+        final gstin = gstinVal.isNotEmpty ? gstinVal : (_extractTag(body, 'PARTYGSTIN') ?? '');
+
+        final phoneVal = _extractTag(body, 'LEDGERPHONE') ?? '';
+        final phone = phoneVal.isNotEmpty ? phoneVal : (_extractTag(body, 'PHONE') ?? '');
 
         final partyId = _uuid.v4();
         final party = Party(
@@ -321,18 +324,15 @@ class TallyImportService {
           'created_at': DateTime.now().toIso8601String(),
         });
 
-        existingParties[key] = partyId;
         partyNameToIdMap[key] = partyId;
         partiesImported++;
       }
 
       // 2. Parse STOCKITEM tags (Products)
       final stockItemMatches = RegExp(r'<STOCKITEM([^>]*)>([\s\S]*?)</STOCKITEM>', caseSensitive: false).allMatches(xmlContent);
-      final Map<String, String> itemNameToIdMap = {};
-
-      // Get existing items to avoid duplicates
+      // Get existing items to avoid duplicates and map them
       final List<Map<String, dynamic>> existingItemsRows = await txn.query('items');
-      final Map<String, String> existingItems = {
+      final Map<String, String> itemNameToIdMap = {
         for (final r in existingItemsRows) (r['name'] as String).toLowerCase(): r['id'] as String
       };
 
@@ -347,14 +347,29 @@ class TallyImportService {
         name = name.trim();
 
         final String key = name.toLowerCase();
-        if (existingItems.containsKey(key)) {
-          itemNameToIdMap[key] = existingItems[key]!;
+        if (itemNameToIdMap.containsKey(key)) {
           continue;
         }
 
         final uom = _extractTag(body, 'BASEUNITS') ?? _extractTag(body, 'UOM') ?? 'BAG';
         final hsn = _extractTag(body, 'HSNCODE') ?? '';
-        final rateStr = _extractTag(body, 'GSTRATE') ?? _extractTag(body, 'RATE') ?? '5.0';
+
+        // Try extracting nested GST rate first if present
+        String? rateStr;
+        final gstDetailsList = _extractTag(body, 'GSTDETAILS.LIST');
+        if (gstDetailsList != null) {
+          final stateGstDetailsList = _extractTag(gstDetailsList, 'STATEGSTDETAILS.LIST');
+          if (stateGstDetailsList != null) {
+            final rateDetailsList = _extractTag(stateGstDetailsList, 'RATEDETAILS.LIST');
+            if (rateDetailsList != null) {
+              rateStr = _extractTag(rateDetailsList, 'GSTRATE');
+            }
+          }
+          if (rateStr == null) {
+            rateStr = _extractTag(gstDetailsList, 'GSTRATE');
+          }
+        }
+        rateStr ??= _extractTag(body, 'GSTRATE') ?? _extractTag(body, 'RATE') ?? '5.0';
         
         // Clean rate
         final double gstRate = double.tryParse(rateStr.replaceAll(RegExp(r'[^\d\.]'), '')) ?? 5.0;
@@ -369,10 +384,10 @@ class TallyImportService {
           primaryUnit: uom.toUpperCase().contains('BOX') ? 'BOX' : 'BAG',
           bagWeightKg: 25.0,
           createdAt: DateTime.now(),
+          stockGroup: _extractTag(body, 'PARENT') ?? 'General',
         );
 
         await txn.insert('items', item.toMap());
-        existingItems[key] = itemId;
         itemNameToIdMap[key] = itemId;
         itemsImported++;
       }
@@ -387,12 +402,21 @@ class TallyImportService {
 
         final vchType = _extractAttribute(openingTag, 'VCHTYPE') ?? _extractTag(body, 'VOUCHERTYPE') ?? '';
         final isSale = vchType.toLowerCase().contains('sale');
-        final isPurchase = vchType.toLowerCase().contains('purchase');
+        final isPurchase = vchType.toLowerCase().contains('purchase') ||
+            vchType.toLowerCase().contains('stockin') ||
+            vchType.toLowerCase().contains('stock in') ||
+            vchType.toLowerCase().contains('receipt note');
 
         if (!isSale && !isPurchase) continue;
 
-        final partyName = _extractTag(body, 'PARTYLEDGERNAME') ?? '';
-        if (partyName.trim().isEmpty) continue;
+        String partyName = (_extractTag(body, 'PARTYLEDGERNAME') ?? '').trim();
+        if (partyName.isEmpty) {
+          if (isPurchase) {
+            partyName = 'Stock Adjustment Supplier';
+          } else {
+            continue;
+          }
+        }
 
         final dateStr = _extractTag(body, 'DATE') ?? ''; // e.g. "20260610"
         DateTime date = DateTime.now();
