@@ -22,7 +22,7 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     return await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -564,9 +564,11 @@ class DbHelper {
         )
       ''');
 
-      // 11. Virtual Tables (FTS5)
-      await db.execute('CREATE VIRTUAL TABLE IF NOT EXISTS fts_vouchers USING fts5(voucher_id, narration, voucher_no)');
-      await db.execute('CREATE VIRTUAL TABLE IF NOT EXISTS fts_ledgers USING fts5(ledger_id, name)');
+      // 11. Virtual Tables (FTS5 with FTS4 fallback)
+      final useFts5 = await _supportsFts5(db);
+      final ftsModule = useFts5 ? 'fts5' : 'fts4';
+      await db.execute('CREATE VIRTUAL TABLE IF NOT EXISTS fts_vouchers USING $ftsModule(voucher_id, narration, voucher_no)');
+      await db.execute('CREATE VIRTUAL TABLE IF NOT EXISTS fts_ledgers USING $ftsModule(ledger_id, name)');
 
       // 12. Indexes
       await db.execute('CREATE INDEX IF NOT EXISTS idx_vouchers_company_date ON vouchers(company_id, date)');
@@ -644,6 +646,15 @@ class DbHelper {
         SELECT id, name FROM ledgers
       ''');
     }
+
+    if (oldVersion < 12) {
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='items'"
+      );
+      if (tables.isNotEmpty) {
+        await db.execute("ALTER TABLE items ADD COLUMN stock_group TEXT DEFAULT 'General'");
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -660,7 +671,8 @@ class DbHelper {
         box_weight_kg REAL,
         low_stock_threshold REAL NOT NULL DEFAULT 10.0,
         created_at TEXT NOT NULL,
-        is_deleted INTEGER NOT NULL DEFAULT 0
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        stock_group TEXT DEFAULT 'General'
       )
     ''');
 
@@ -1134,8 +1146,10 @@ class DbHelper {
       )
     ''');
 
-    await db.execute('CREATE VIRTUAL TABLE fts_vouchers USING fts5(voucher_id, narration, voucher_no)');
-    await db.execute('CREATE VIRTUAL TABLE fts_ledgers USING fts5(ledger_id, name)');
+    final useFts5 = await _supportsFts5(db);
+    final ftsModule = useFts5 ? 'fts5' : 'fts4';
+    await db.execute('CREATE VIRTUAL TABLE fts_vouchers USING $ftsModule(voucher_id, narration, voucher_no)');
+    await db.execute('CREATE VIRTUAL TABLE fts_ledgers USING $ftsModule(ledger_id, name)');
 
     // Create SQL Triggers for FTS sync
     await db.execute('''
@@ -1202,5 +1216,21 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     await close();
     await deleteDatabase(path);
+  }
+
+  /// Checks if FTS5 module is supported/enabled in the current SQLite environment
+  Future<bool> _supportsFts5(Database db) async {
+    try {
+      final modules = await db.rawQuery("SELECT name FROM pragma_module_list WHERE name = 'fts5'");
+      return modules.isNotEmpty;
+    } catch (_) {
+      try {
+        final result = await db.rawQuery("SELECT sqlite_compileoption_used('ENABLE_FTS5') AS fts5");
+        if (result.isNotEmpty && result.first['fts5'] == 1) {
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
   }
 }

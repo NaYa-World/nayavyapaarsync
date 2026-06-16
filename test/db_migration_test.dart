@@ -351,5 +351,55 @@ void main() {
       expect(indexNames, contains('idx_voucher_lines_voucher'));
       expect(indexNames, contains('idx_stock_movements_item'));
     });
+
+    test('v11 to v12 migration adds stock_group column to items table', () async {
+      // 1. Create a version 11 database
+      final dbV11 = await openDatabase(
+        dbPath,
+        version: 11,
+        onCreate: (db, version) async {
+          // Version 11 items schema (without stock_group)
+          await db.execute('''
+            CREATE TABLE items (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              category TEXT CHECK(category IN ('SEED', 'FERTILISER')) NOT NULL,
+              hsn_code TEXT NOT NULL,
+              gst_rate REAL NOT NULL,
+              primary_unit TEXT CHECK(primary_unit IN ('BAG', 'BOX')) NOT NULL,
+              bag_weight_kg REAL,
+              box_weight_kg REAL,
+              low_stock_threshold REAL NOT NULL DEFAULT 10.0,
+              created_at TEXT NOT NULL,
+              is_deleted INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+        },
+      );
+
+      // Insert an item in v11 items
+      await dbV11.insert('items', {
+        'id': 'item-v11-1',
+        'name': 'Paddy Seed',
+        'category': 'SEED',
+        'hsn_code': '12099190',
+        'gst_rate': 5.0,
+        'primary_unit': 'BAG',
+        'bag_weight_kg': 25.0,
+        'low_stock_threshold': 10.0,
+        'created_at': '2026-06-15T12:00:00Z',
+        'is_deleted': 0,
+      });
+
+      await dbV11.close();
+
+      // 2. Open using DbHelper (triggers v12 migration)
+      final database = await dbHelper.database;
+
+      // 3. Verify stock_group exists and defaults to 'General'
+      final items = await database.query('items');
+      expect(items.length, 1);
+      expect(items.first['stock_group'], 'General');
+    });
   });
 }
