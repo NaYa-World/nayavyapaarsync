@@ -390,6 +390,66 @@ class TallyImportService {
         await txn.insert('items', item.toMap());
         itemNameToIdMap[key] = itemId;
         itemsImported++;
+
+        // Parse opening stock balances for the item (e.g. from stksum.xml)
+        final openingBalanceStr = _extractTag(body, 'OPENINGBALANCE') ?? '';
+        final openingValueStr = _extractTag(body, 'OPENINGVALUE') ?? '';
+        final openingRateStr = _extractTag(body, 'OPENINGRATE') ?? '';
+
+        final double openingQty = (double.tryParse(openingBalanceStr.replaceAll(RegExp(r'[^\d\.\-]'), '')) ?? 0.0).abs();
+        final double openingValue = (double.tryParse(openingValueStr.replaceAll(RegExp(r'[^\d\.\-]'), '')) ?? 0.0).abs();
+        final double openingRate = openingRateStr.isNotEmpty
+            ? (double.tryParse(openingRateStr.split('/').first.replaceAll(RegExp(r'[^\d\.\-]'), '')) ?? 0.0).abs()
+            : (openingQty > 0 ? openingValue / openingQty : 0.0);
+
+        if (openingQty > 0) {
+          // Ensure the opening stock journal voucher exists
+          final existingVoucher = await txn.query('vouchers', where: "id = ?", whereArgs: ['opening_stock_voucher']);
+          if (existingVoucher.isEmpty) {
+            await txn.insert('vouchers', {
+              'id': 'opening_stock_voucher',
+              'voucher_no': 'OP-STOCK',
+              'type': 'JOURNAL',
+              'date': '2026-04-01',
+              'narration': 'Opening Stock Balance from Import',
+              'company_id': 'company_default',
+              'fy_id': 'fy_default',
+              'is_locked': 0,
+              'created_at': DateTime.now().toIso8601String(),
+              'updated_at': DateTime.now().toIso8601String(),
+              'is_deleted': 0,
+            });
+          }
+
+          // Create opening batch
+          final String batchId = 'op_batch_$itemId';
+          final existingBatch = await txn.query('batches', where: 'id = ?', whereArgs: [batchId]);
+          if (existingBatch.isEmpty) {
+            await txn.insert('batches', {
+              'id': batchId,
+              'stock_item_id': itemId,
+              'batch_no': 'OP-BATCH',
+              'mfg_date': '2026-04-01',
+              'expiry_date': '2027-03-31',
+            });
+          }
+
+          // Create opening stock movement
+          final String movementId = 'op_sm_$itemId';
+          final existingMovement = await txn.query('stock_movements', where: 'id = ?', whereArgs: [movementId]);
+          if (existingMovement.isEmpty) {
+            await txn.insert('stock_movements', {
+              'id': movementId,
+              'stock_item_id': itemId,
+              'godown_id': 'godown_default',
+              'ref_voucher_id': 'opening_stock_voucher',
+              'qty': openingQty,
+              'rate': openingRate,
+              'movement_type': 'IN',
+              'created_at': '2026-04-01',
+            });
+          }
+        }
       }
 
       // 3. Parse VOUCHER tags (Invoices)
@@ -401,20 +461,50 @@ class TallyImportService {
         final body = m.group(2) ?? '';
 
         final vchType = _extractAttribute(openingTag, 'VCHTYPE') ?? _extractTag(body, 'VOUCHERTYPE') ?? '';
-        final isSale = vchType.toLowerCase().contains('sale');
-        final isPurchase = vchType.toLowerCase().contains('purchase') ||
-            vchType.toLowerCase().contains('stockin') ||
-            vchType.toLowerCase().contains('stock in') ||
-            vchType.toLowerCase().contains('receipt note');
+        final String vchTypeLower = vchType.toLowerCase();
 
-        if (!isSale && !isPurchase) continue;
+        final isSale = vchTypeLower.contains('sale');
+        final isPurchase = vchTypeLower.contains('purchase') ||
+            vchTypeLower.contains('stockin') ||
+            vchTypeLower.contains('stock in') ||
+            vchTypeLower.contains('receipt note');
+        final isReceipt = vchTypeLower.contains('receipt') && !vchTypeLower.contains('receipt note');
+        final isPayment = vchTypeLower.contains('payment');
+        final isContra = vchTypeLower.contains('contra');
+        final isJournal = vchTypeLower.contains('journal') && !vchTypeLower.contains('goods');
+        final isCreditNote = vchTypeLower.contains('credit note') || vchTypeLower.contains('creditnote');
+        final isDebitNote = vchTypeLower.contains('debit note') || vchTypeLower.contains('debitnote');
+
+        if (!isSale && !isPurchase && !isReceipt && !isPayment && !isContra && !isJournal && !isCreditNote && !isDebitNote) {
+          continue;
+        }
+
+        // Determine mapped voucher type for DB entry
+        final String mappedType;
+        if (isSale) {
+          mappedType = 'SALE';
+        } else if (isPurchase) {
+          mappedType = 'PURCHASE';
+        } else if (isReceipt) {
+          mappedType = 'RECEIPT';
+        } else if (isPayment) {
+          mappedType = 'PAYMENT';
+        } else if (isContra) {
+          mappedType = 'CONTRA';
+        } else if (isCreditNote) {
+          mappedType = 'CREDIT_NOTE';
+        } else if (isDebitNote) {
+          mappedType = 'DEBIT_NOTE';
+        } else {
+          mappedType = 'JOURNAL';
+        }
 
         String partyName = (_extractTag(body, 'PARTYLEDGERNAME') ?? '').trim();
         if (partyName.isEmpty) {
           if (isPurchase) {
             partyName = 'Stock Adjustment Supplier';
           } else {
-            continue;
+            partyName = 'General Party';
           }
         }
 
@@ -435,17 +525,18 @@ class TallyImportService {
         final idempotencyKey = '$invoiceNo+$dateStr+$companyName';
         final existingSales = await txn.query('sales', where: 'invoice_no = ?', whereArgs: [invoiceNo]);
         final existingPurchases = await txn.query('purchases', where: 'invoice_no = ?', whereArgs: [invoiceNo]);
+        final existingVouchers = await txn.query('vouchers', where: 'voucher_no = ? AND date = ?', whereArgs: [invoiceNo, date.toIso8601String()]);
         
-        if (existingSales.isNotEmpty || existingPurchases.isNotEmpty) {
+        if (existingSales.isNotEmpty || existingPurchases.isNotEmpty || existingVouchers.isNotEmpty) {
           logs.add('Duplicate voucher skipped (Idempotency Key: $idempotencyKey)');
           continue;
         }
 
         String? partyId = partyNameToIdMap[partyName.toLowerCase()];
-        if (partyId == null) {
+        if (partyId == null && partyName != 'General Party') {
           // Create party on the fly
           partyId = _uuid.v4();
-          final String partyType = isSale ? 'CUSTOMER' : 'SUPPLIER';
+          final String partyType = (isSale || isCreditNote) ? 'CUSTOMER' : 'SUPPLIER';
           final party = Party(
             id: partyId,
             name: partyName.trim(),
@@ -472,6 +563,120 @@ class TallyImportService {
 
           partyNameToIdMap[partyName.toLowerCase()] = partyId;
           partiesImported++;
+        }
+
+        // Parse ledger entries under LEDGERENTRIES.LIST or ALLLEDGERENTRIES.LIST
+        final ledgerEntriesMatches = RegExp(
+          r'<(?:LEDGERENTRIES|ALLLEDGERENTRIES)\.LIST>([\s\S]*?)</(?:LEDGERENTRIES|ALLLEDGERENTRIES)\.LIST>',
+          caseSensitive: false
+        ).allMatches(body);
+
+        final List<Map<String, dynamic>> parsedVoucherLines = [];
+        for (final led in ledgerEntriesMatches) {
+          final ledBody = led.group(1) ?? '';
+          String ledgerName = (_extractTag(ledBody, 'LEDGERNAME') ?? '').trim();
+          if (ledgerName.isEmpty) continue;
+
+          final deemedPositive = _extractTag(ledBody, 'ISDEEMEDPOSITIVE') ?? '';
+          final amountStr = _extractTag(ledBody, 'AMOUNT') ?? '0.0';
+          final double rawAmount = double.tryParse(amountStr.replaceAll(RegExp(r'[^\d\.\-]'), '')) ?? 0.0;
+          
+          final bool isDebit;
+          if (deemedPositive.isNotEmpty) {
+            isDebit = deemedPositive.toLowerCase() == 'yes';
+          } else {
+            isDebit = rawAmount < 0;
+          }
+          final double amount = rawAmount.abs();
+          if (amount == 0.0) continue;
+
+          parsedVoucherLines.add({
+            'ledger_name': ledgerName,
+            'is_debit': isDebit,
+            'amount': amount,
+            'narration': _extractTag(ledBody, 'NARRATION'),
+          });
+        }
+
+        // Resolve Financial Year dynamically
+        String fyId = 'fy_default';
+        final List<Map<String, dynamic>> fyRows = await txn.query(
+          'financial_years',
+          where: 'company_id = ? AND start_date <= ? AND end_date >= ?',
+          whereArgs: ['company_default', date.toIso8601String().substring(0, 10), date.toIso8601String().substring(0, 10)],
+          limit: 1,
+        );
+        if (fyRows.isNotEmpty) {
+          fyId = fyRows.first['id'] as String;
+        }
+
+        final transactionId = _uuid.v4();
+
+        // Resolve or create ledgers on the fly for the voucher lines
+        final List<VoucherLine> dbVoucherLines = [];
+        double totalDr = 0.0;
+        double totalCr = 0.0;
+
+        for (final line in parsedVoucherLines) {
+          final String name = line['ledger_name'];
+          final bool isDebit = line['is_debit'];
+          final double amt = line['amount'];
+          final String? lineNarration = line['narration'];
+
+          String? ledgerId;
+          final key = name.toLowerCase();
+          final String? mappedPartyId = partyNameToIdMap[key];
+          if (mappedPartyId != null) {
+            ledgerId = 'led_$mappedPartyId';
+          } else {
+            final existing = await txn.query('ledgers', where: 'name = ?', whereArgs: [name]);
+            if (existing.isNotEmpty) {
+              ledgerId = existing.first['id'] as String;
+            } else {
+              final String groupId;
+              final String balType;
+              if (name.toLowerCase().contains('cash')) {
+                groupId = 'grp_cash';
+                balType = 'DR';
+              } else if (name.toLowerCase().contains('bank')) {
+                groupId = 'grp_bank';
+                balType = 'DR';
+              } else if (isDebit) {
+                groupId = 'grp_assets';
+                balType = 'DR';
+              } else {
+                groupId = 'grp_liabilities';
+                balType = 'CR';
+              }
+
+              ledgerId = 'led_${_uuid.v4().substring(0, 8)}';
+              await txn.insert('ledgers', {
+                'id': ledgerId,
+                'name': name,
+                'group_id': groupId,
+                'opening_balance': 0.0,
+                'balance_type': balType,
+                'company_id': 'company_default',
+                'is_active': 1,
+                'created_at': DateTime.now().toIso8601String(),
+              });
+            }
+          }
+
+          if (isDebit) {
+            totalDr += amt;
+          } else {
+            totalCr += amt;
+          }
+
+          dbVoucherLines.add(VoucherLine(
+            id: _uuid.v4(),
+            voucherId: transactionId,
+            ledgerId: ledgerId,
+            drAmount: isDebit ? amt : 0.0,
+            crAmount: isDebit ? 0.0 : amt,
+            narration: lineNarration,
+          ));
         }
 
         // Parse item rows under ALLINVENTORYENTRIES.LIST
@@ -545,28 +750,12 @@ class TallyImportService {
           gstTotal += gstAmt;
         }
 
-        if (parsedItems.isEmpty) continue;
-
-        final grandTotal = subtotal + gstTotal;
-        final transactionId = _uuid.v4();
-
-        // Resolve Financial Year dynamically
-        String fyId = 'fy_default';
-        final List<Map<String, dynamic>> fyRows = await txn.query(
-          'financial_years',
-          where: 'company_id = ? AND start_date <= ? AND end_date >= ?',
-          whereArgs: ['company_default', date.toIso8601String().substring(0, 10), date.toIso8601String().substring(0, 10)],
-          limit: 1,
-        );
-        if (fyRows.isNotEmpty) {
-          fyId = fyRows.first['id'] as String;
-        }
-
         if (isSale) {
+          final grandTotal = subtotal + gstTotal;
           final sale = Sale(
             id: transactionId,
             invoiceNo: invoiceNo,
-            partyId: partyId,
+            partyId: partyId ?? 'company_default',
             date: date,
             subtotal: subtotal,
             gstTotal: gstTotal,
@@ -609,7 +798,7 @@ class TallyImportService {
             voucherNo: invoiceNo,
             type: 'SALE',
             date: date,
-            narration: 'Tally Import: $invoiceNo',
+            narration: _extractTag(body, 'NARRATION') ?? 'Tally Import: $invoiceNo',
             companyId: 'company_default',
             fyId: fyId,
             createdAt: DateTime.now(),
@@ -617,39 +806,58 @@ class TallyImportService {
           );
           await txn.insert('vouchers', doubleEntryVoucher.toMap());
 
-          // DR Customer
-          final lineParty = VoucherLine(
-            id: _uuid.v4(),
-            voucherId: transactionId,
-            ledgerId: 'led_$partyId',
-            drAmount: grandTotal,
-            crAmount: 0.0,
-            narration: 'To party account',
-          );
-          await txn.insert('voucher_lines', lineParty.toMap());
-
-          // CR Product Sales
-          final lineSales = VoucherLine(
-            id: _uuid.v4(),
-            voucherId: transactionId,
-            ledgerId: 'led_sales_ac',
-            drAmount: 0.0,
-            crAmount: subtotal,
-            narration: 'Sales revenue',
-          );
-          await txn.insert('voucher_lines', lineSales.toMap());
-
-          // CR GST Output
-          if (gstTotal > 0) {
-            final lineGst = VoucherLine(
+          if (dbVoucherLines.isNotEmpty) {
+            if ((totalDr - totalCr).abs() > 0.01) {
+              final diff = (totalDr - totalCr).abs();
+              final isDrDiff = totalCr > totalDr;
+              final lineDiff = VoucherLine(
+                id: _uuid.v4(),
+                voucherId: transactionId,
+                ledgerId: 'led_cash',
+                drAmount: isDrDiff ? diff : 0.0,
+                crAmount: isDrDiff ? 0.0 : diff,
+                narration: 'Rounding adjustment on import',
+              );
+              dbVoucherLines.add(lineDiff);
+            }
+            for (final line in dbVoucherLines) {
+              await txn.insert('voucher_lines', line.toMap());
+            }
+          } else {
+            // DR Customer
+            final lineParty = VoucherLine(
               id: _uuid.v4(),
               voucherId: transactionId,
-              ledgerId: 'led_gst_output',
-              drAmount: 0.0,
-              crAmount: gstTotal,
-              narration: 'GST tax collected',
+              ledgerId: partyId != null ? 'led_$partyId' : 'led_cash',
+              drAmount: grandTotal,
+              crAmount: 0.0,
+              narration: 'To party account',
             );
-            await txn.insert('voucher_lines', lineGst.toMap());
+            await txn.insert('voucher_lines', lineParty.toMap());
+
+            // CR Product Sales
+            final lineSales = VoucherLine(
+              id: _uuid.v4(),
+              voucherId: transactionId,
+              ledgerId: 'led_sales_ac',
+              drAmount: 0.0,
+              crAmount: subtotal,
+              narration: 'Sales revenue',
+            );
+            await txn.insert('voucher_lines', lineSales.toMap());
+
+            // CR GST Output
+            if (gstTotal > 0) {
+              final lineGst = VoucherLine(
+                id: _uuid.v4(),
+                voucherId: transactionId,
+                ledgerId: 'led_gst_output',
+                drAmount: 0.0,
+                crAmount: gstTotal,
+                narration: 'GST tax collected',
+              );
+              await txn.insert('voucher_lines', lineGst.toMap());
+            }
           }
 
           // ─── Stock Movements Seeding ───
@@ -668,11 +876,12 @@ class TallyImportService {
           }
 
           salesImported++;
-        } else {
+        } else if (isPurchase) {
+          final grandTotal = subtotal + gstTotal;
           final purchase = Purchase(
             id: transactionId,
             invoiceNo: invoiceNo,
-            partyId: partyId,
+            partyId: partyId ?? 'company_default',
             date: date,
             subtotal: subtotal,
             gstTotal: gstTotal,
@@ -714,7 +923,7 @@ class TallyImportService {
             voucherNo: invoiceNo,
             type: 'PURCHASE',
             date: date,
-            narration: 'Tally Import: $invoiceNo',
+            narration: _extractTag(body, 'NARRATION') ?? 'Tally Import: $invoiceNo',
             companyId: 'company_default',
             fyId: fyId,
             createdAt: DateTime.now(),
@@ -722,39 +931,58 @@ class TallyImportService {
           );
           await txn.insert('vouchers', doubleEntryVoucher.toMap());
 
-          // CR Supplier
-          final lineParty = VoucherLine(
-            id: _uuid.v4(),
-            voucherId: transactionId,
-            ledgerId: 'led_$partyId',
-            drAmount: 0.0,
-            crAmount: grandTotal,
-            narration: 'From supplier account',
-          );
-          await txn.insert('voucher_lines', lineParty.toMap());
-
-          // DR Product Purchases
-          final linePurchases = VoucherLine(
-            id: _uuid.v4(),
-            voucherId: transactionId,
-            ledgerId: 'led_purchases_ac',
-            drAmount: subtotal,
-            crAmount: 0.0,
-            narration: 'Purchase cost',
-          );
-          await txn.insert('voucher_lines', linePurchases.toMap());
-
-          // DR GST Input
-          if (gstTotal > 0) {
-            final lineGst = VoucherLine(
+          if (dbVoucherLines.isNotEmpty) {
+            if ((totalDr - totalCr).abs() > 0.01) {
+              final diff = (totalDr - totalCr).abs();
+              final isDrDiff = totalCr > totalDr;
+              final lineDiff = VoucherLine(
+                id: _uuid.v4(),
+                voucherId: transactionId,
+                ledgerId: 'led_cash',
+                drAmount: isDrDiff ? diff : 0.0,
+                crAmount: isDrDiff ? 0.0 : diff,
+                narration: 'Rounding adjustment on import',
+              );
+              dbVoucherLines.add(lineDiff);
+            }
+            for (final line in dbVoucherLines) {
+              await txn.insert('voucher_lines', line.toMap());
+            }
+          } else {
+            // CR Supplier
+            final lineParty = VoucherLine(
               id: _uuid.v4(),
               voucherId: transactionId,
-              ledgerId: 'led_gst_input',
-              drAmount: gstTotal,
-              crAmount: 0.0,
-              narration: 'GST tax input credit',
+              ledgerId: partyId != null ? 'led_$partyId' : 'led_cash',
+              drAmount: 0.0,
+              crAmount: grandTotal,
+              narration: 'From supplier account',
             );
-            await txn.insert('voucher_lines', lineGst.toMap());
+            await txn.insert('voucher_lines', lineParty.toMap());
+
+            // DR Product Purchases
+            final linePurchases = VoucherLine(
+              id: _uuid.v4(),
+              voucherId: transactionId,
+              ledgerId: 'led_purchases_ac',
+              drAmount: subtotal,
+              crAmount: 0.0,
+              narration: 'Purchase cost',
+            );
+            await txn.insert('voucher_lines', linePurchases.toMap());
+
+            // DR GST Input
+            if (gstTotal > 0) {
+              final lineGst = VoucherLine(
+                id: _uuid.v4(),
+                voucherId: transactionId,
+                ledgerId: 'led_gst_input',
+                drAmount: gstTotal,
+                crAmount: 0.0,
+                narration: 'GST tax input credit',
+              );
+              await txn.insert('voucher_lines', lineGst.toMap());
+            }
           }
 
           // ─── Stock Movements Seeding ───
@@ -773,6 +1001,59 @@ class TallyImportService {
           }
 
           purchasesImported++;
+        } else {
+          // Process double-entry accounting entries for other voucher types (Payment, Receipt, Contra, Journal, Debit Note, Credit Note)
+          final doubleEntryVoucher = Voucher(
+            id: transactionId,
+            voucherNo: invoiceNo,
+            type: mappedType,
+            date: date,
+            narration: _extractTag(body, 'NARRATION') ?? 'Tally Import: $invoiceNo',
+            companyId: 'company_default',
+            fyId: fyId,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          await txn.insert('vouchers', doubleEntryVoucher.toMap());
+
+          if (dbVoucherLines.isNotEmpty) {
+            if ((totalDr - totalCr).abs() > 0.01) {
+              final diff = (totalDr - totalCr).abs();
+              final isDrDiff = totalCr > totalDr;
+              final lineDiff = VoucherLine(
+                id: _uuid.v4(),
+                voucherId: transactionId,
+                ledgerId: 'led_cash',
+                drAmount: isDrDiff ? diff : 0.0,
+                crAmount: isDrDiff ? 0.0 : diff,
+                narration: 'Rounding adjustment on import',
+              );
+              dbVoucherLines.add(lineDiff);
+            }
+            for (final line in dbVoucherLines) {
+              await txn.insert('voucher_lines', line.toMap());
+            }
+          }
+
+          // Handle stock movements for Credit Notes and Debit Notes if inventory lists exist
+          if (mappedType == 'CREDIT_NOTE' || mappedType == 'DEBIT_NOTE') {
+            final String movementType = mappedType == 'CREDIT_NOTE' ? 'IN' : 'OUT';
+            for (final item in parsedItems) {
+              final movement = StockMovement(
+                id: _uuid.v4(),
+                stockItemId: item['item_id'] as String,
+                godownId: 'godown_default',
+                refVoucherId: transactionId,
+                qty: item['qty'] as double,
+                rate: item['rate'] as double,
+                movementType: movementType,
+                createdAt: date,
+              );
+              await txn.insert('stock_movements', movement.toMap());
+            }
+          }
+
+          logs.add('Imported double-entry voucher $invoiceNo of type $mappedType');
         }
       }
     });

@@ -247,5 +247,90 @@ void main() {
       expect(stockMovements.first['qty'], 50.0);
       expect(stockMovements.first['movement_type'], 'IN');
     });
+
+    test('Import Daybook and Stock Summary details with Opening Balances', () async {
+      const tallyXml = '''
+<ENVELOPE>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDATA>
+        <!-- Stock item with opening balance -->
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="Maize Seeds Special">
+            <BASEUNITS>BAG</BASEUNITS>
+            <HSNCODE>12099190</HSNCODE>
+            <OPENINGBALANCE>120.00 BAG</OPENINGBALANCE>
+            <OPENINGVALUE>-18000.00</OPENINGVALUE>
+            <OPENINGRATE>150.00/BAG</OPENINGRATE>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+
+        <!-- Payment voucher (double-entry ledger entries only) -->
+        <TALLYMESSAGE>
+          <VOUCHER VCHTYPE="Payment" VOUCHERNUMBER="PAY-001">
+            <DATE>20260602</DATE>
+            <PARTYLEDGERNAME>Sri Balaji Agro</PARTYLEDGERNAME>
+            <NARRATION>Payment to supplier for pending bill</NARRATION>
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>Sri Balaji Agro</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-10500.00</AMOUNT>
+            </LEDGERENTRIES.LIST>
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>Cash Account</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>10500.00</AMOUNT>
+            </LEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+''';
+
+      final result = await TallyImportService().importTallyXml(tallyXml);
+      expect(result.itemsImported, 1);
+      
+      final db = await dbHelper.database;
+
+      // 1. Verify Stock Item opening balance
+      final items = await db.query('items', where: "name = ?", whereArgs: ["Maize Seeds Special"]);
+      expect(items.length, 1);
+
+      // Verify opening stock movement got created
+      final stockMovements = await db.query('stock_movements', where: "ref_voucher_id = ?", whereArgs: ["opening_stock_voucher"]);
+      expect(stockMovements.length, 1);
+      expect(stockMovements.first['qty'], 120.0);
+      expect(stockMovements.first['rate'], 150.0);
+      expect(stockMovements.first['movement_type'], 'IN');
+
+      // Verify opening batch got created
+      final batches = await db.query('batches', where: "stock_item_id = ?", whereArgs: [items.first['id']]);
+      expect(batches.length, 1);
+      expect(batches.first['batch_no'], 'OP-BATCH');
+
+      // 2. Verify Payment voucher
+      final vouchers = await db.query('vouchers', where: "voucher_no = ?", whereArgs: ["PAY-001"]);
+      expect(vouchers.length, 1);
+      expect(vouchers.first['type'], 'PAYMENT');
+      expect(vouchers.first['narration'], 'Payment to supplier for pending bill');
+
+      // Verify voucher lines
+      final lines = await db.query('voucher_lines', where: "voucher_id = ?", whereArgs: [vouchers.first['id']]);
+      expect(lines.length, 2);
+
+      final debitLine = lines.firstWhere((l) => (l['dr_amount'] as num) > 0);
+      final creditLine = lines.firstWhere((l) => (l['cr_amount'] as num) > 0);
+
+      // Verify debitLine is for the supplier and creditLine is for cash
+      final debitLedger = await db.query('ledgers', where: "id = ?", whereArgs: [debitLine['ledger_id']]);
+      expect(debitLedger.first['name'], 'Sri Balaji Agro');
+      expect(debitLine['dr_amount'], 10500.0);
+
+      final creditLedger = await db.query('ledgers', where: "id = ?", whereArgs: [creditLine['ledger_id']]);
+      expect(creditLedger.first['name'], 'Cash Account');
+      expect(creditLine['cr_amount'], 10500.0);
+    });
   });
 }
