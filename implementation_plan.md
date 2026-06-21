@@ -129,6 +129,6 @@ feat/per-company-db         →  feat: migrate to per-company database files
 | Phase | Features | Status |
 |---|---|---|
 | **Phase 1** | XML import, Dashboard header, Conflict resolution | ✅ Done |
-| **Phase 2** | Company metadata, User roles, FY lock, Cheque tracking | 🚧 In Progress |
-| **Phase 3** | Double-entry engine, BRS, FTS5, Advanced reports | 📋 Planned |
+| **Phase 2** | Company metadata, User roles, FY lock, Cheque tracking | ✅ Done |
+| **Phase 3** | Double-entry engine, BRS, FTS5, Advanced reports | ✅ Done |
 | **Phase 4** | Encryption, Biometric, CSV import, Per-company DB | 📋 Planned |
