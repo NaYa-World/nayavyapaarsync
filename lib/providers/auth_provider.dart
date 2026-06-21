@@ -73,6 +73,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     // 2. Silent login check
     final user = await _authService.signInSilently();
+    if (user != null) {
+      await _secureStorage.write(key: 'google_user_email', value: user.email);
+    }
     state = state.copyWith(user: user, isLoading: false);
   }
 
@@ -82,6 +85,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final user = await _authService.signIn();
       if (user != null) {
+        await _secureStorage.write(key: 'google_user_email', value: user.email);
         state = state.copyWith(user: user, isLoading: false);
         return true;
       } else {
@@ -102,6 +106,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true);
     try {
       await _authService.signOut();
+      await _secureStorage.delete(key: 'google_user_email');
+      await _secureStorage.delete(key: 'backup_encryption_key');
       
       // Clear database
       await DbHelper().clearDatabase();

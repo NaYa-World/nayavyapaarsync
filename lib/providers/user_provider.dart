@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../data/database/db_helper.dart';
 import '../data/models/app_user.dart';
 import '../data/repositories/user_repository.dart';
+import '../core/utils/encryption_helper.dart';
 
 // ─── Repository Provider ────────────────────────────────────────────────────
 
@@ -70,6 +72,9 @@ class UserNotifier extends StateNotifier<AsyncValue<List<AppUser>>> {
     if (user == null) return null;
     final isValid = _repo.validatePin(plainPin, user.pinHash, salt: user.salt);
     if (!isValid) return null;
+
+    final email = await const FlutterSecureStorage().read(key: 'google_user_email') ?? 'default@vyapaarsync.com';
+    await EncryptionHelper.saveEncryptionKeyForPin(plainPin, email);
 
     if (user.salt == null || user.salt!.isEmpty) {
       final newSalt = UserRepository.generateSalt();

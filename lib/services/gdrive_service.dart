@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'auth_service.dart';
+import '../core/utils/encryption_helper.dart';
 
 
 class GDriveFileMeta {
@@ -264,14 +265,17 @@ class GDriveService {
     final snapshotsFolderId = await _getSnapshotsFolderId(driveApi);
     if (snapshotsFolderId == null) return null;
 
+    final tempFile = File('${dbFile.path}_snap.enc');
     try {
+      await EncryptionHelper.encryptFile(dbFile, tempFile);
+
       final drive.File fileMetadata = drive.File()
         ..name = fileName
         ..parents = [snapshotsFolderId];
 
       final media = drive.Media(
-        dbFile.openRead(),
-        dbFile.lengthSync(),
+        tempFile.openRead(),
+        tempFile.lengthSync(),
       );
 
       final drive.File uploadedFile = await driveApi.files.create(
@@ -282,6 +286,10 @@ class GDriveService {
       return uploadedFile.id;
     } catch (_) {
       return null;
+    } finally {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
     }
   }
 
@@ -330,21 +338,32 @@ class GDriveService {
     final backupsFolderId = await _getBackupsFolderId(driveApi);
     if (backupsFolderId == null) return null;
 
-    final drive.File fileMetadata = drive.File()
-      ..name = fileName
-      ..parents = [backupsFolderId];
+    final tempFile = File('${dbFile.path}_back.enc');
+    try {
+      await EncryptionHelper.encryptFile(dbFile, tempFile);
 
-    final media = drive.Media(
-      dbFile.openRead(),
-      dbFile.lengthSync(),
-    );
+      final drive.File fileMetadata = drive.File()
+        ..name = fileName
+        ..parents = [backupsFolderId];
 
-    final drive.File uploadedFile = await driveApi.files.create(
-      fileMetadata,
-      uploadMedia: media,
-    );
+      final media = drive.Media(
+        tempFile.openRead(),
+        tempFile.lengthSync(),
+      );
 
-    return uploadedFile.id;
+      final drive.File uploadedFile = await driveApi.files.create(
+        fileMetadata,
+        uploadMedia: media,
+      );
+
+      return uploadedFile.id;
+    } catch (_) {
+      return null;
+    } finally {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+    }
   }
 
   /// Lists all backup files in /VyapaarSync/backups/ (Legacy backups)
@@ -381,24 +400,35 @@ class GDriveService {
     final driveApi = await _getDriveApi();
     if (driveApi == null) return false;
 
+    final tempFile = File('${destinationFile.path}.enc');
     try {
       final drive.Media response = (await driveApi.files.get(
         fileId,
         downloadOptions: drive.DownloadOptions.fullMedia,
       )) as drive.Media;
 
-      // Delete destination file if exists
+      // Delete temp file if exists
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+
+      // Write bytes to temp file
+      final IOSink sink = tempFile.openWrite();
+      await response.stream.pipe(sink);
+      await sink.close();
+
+      // Decrypt temp file to destination file
       if (await destinationFile.exists()) {
         await destinationFile.delete();
       }
-
-      // Write bytes to file
-      final IOSink sink = destinationFile.openWrite();
-      await response.stream.pipe(sink);
-      await sink.close();
+      await EncryptionHelper.decryptFile(tempFile, destinationFile);
       return true;
     } catch (_) {
       return false;
+    } finally {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
     }
   }
 
