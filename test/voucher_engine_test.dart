@@ -9,6 +9,7 @@ import 'package:godown_management/data/models/stock_movement.dart';
 import 'package:godown_management/data/models/bank_instrument.dart';
 import 'package:godown_management/data/repositories/ledger_repository.dart';
 import 'package:godown_management/data/repositories/brs_repository.dart';
+import 'package:godown_management/data/repositories/voucher_repository.dart';
 import 'package:godown_management/domain/services/voucher_engine.dart';
 import 'package:godown_management/domain/services/reports_engine.dart';
 import 'package:godown_management/core/utils/fy_guard.dart';
@@ -272,6 +273,39 @@ void main() {
       expect(bs['net_profit'], 1800.0);
       expect(bs['total_liabilities_and_equity'], 3000.0);
       expect(bs['difference'], 0.0); // Assets - LiabilitiesAndEquity == 0
+    });
+
+    test('FTS5 search for vouchers and ledgers', () async {
+      final voucherRepo = VoucherRepository();
+
+      // 1. Post a voucher with custom narration
+      final v1 = Voucher(
+        id: 'vfts-1',
+        voucherNo: 'SAL/FTS1',
+        type: 'SALE',
+        date: DateTime(2026, 5, 1),
+        companyId: 'comp_test',
+        fyId: 'fy_test',
+        narration: 'Urgent delivery of organic manure fertilizers',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      final lines1 = [
+        VoucherLine(id: 'vlfts-1', voucherId: 'vfts-1', ledgerId: 'led_cash', drAmount: 500.0),
+        VoucherLine(id: 'vlfts-2', voucherId: 'vfts-1', ledgerId: 'led_sales', crAmount: 500.0),
+      ];
+      await voucherEngine.postVoucher(voucher: v1, lines: lines1);
+
+      // 2. Search vouchers by narration query 'organic'
+      final searchResultV = await voucherRepo.searchVouchers(companyId: 'comp_test', queryText: 'organic');
+      expect(searchResultV.length, 1);
+      expect(searchResultV.first.id, 'vfts-1');
+      expect(searchResultV.first.narration, contains('organic'));
+
+      // 3. Search ledgers by name query 'SBI'
+      final searchResultL = await ledgerRepo.searchLedgers(companyId: 'comp_test', queryText: 'SBI');
+      expect(searchResultL.length, 1);
+      expect(searchResultL.first.id, 'led_sbi');
     });
   });
 }

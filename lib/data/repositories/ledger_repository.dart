@@ -62,4 +62,22 @@ class LedgerRepository {
       whereArgs: [id],
     );
   }
+
+  // ─── FTS5 Search ───────────────────────────────────────────────────────────
+
+  Future<List<Ledger>> searchLedgers({required String companyId, required String queryText, bool activeOnly = true}) async {
+    if (queryText.trim().isEmpty) return getLedgers(companyId: companyId, activeOnly: activeOnly);
+    final db = await _dbHelper.database;
+    final sanitizedQuery = queryText.replaceAll(RegExp(r'[^\w\s]'), '');
+    if (sanitizedQuery.trim().isEmpty) return [];
+
+    final activeFilter = activeOnly ? 'AND l.is_active = 1' : '';
+    final rows = await db.rawQuery('''
+      SELECT l.* FROM ledgers l
+      JOIN fts_ledgers f ON l.id = f.ledger_id
+      WHERE fts_ledgers MATCH ? AND l.company_id = ? $activeFilter
+      ORDER BY l.name ASC
+    ''', ['$sanitizedQuery*', companyId]);
+    return rows.map(Ledger.fromMap).toList();
+  }
 }

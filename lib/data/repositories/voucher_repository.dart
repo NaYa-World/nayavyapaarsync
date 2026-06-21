@@ -98,4 +98,21 @@ class VoucherRepository {
     final rows = await db.query('bill_allocations', where: 'voucher_line_id = ?', whereArgs: [voucherLineId]);
     return rows.map(BillAllocation.fromMap).toList();
   }
+
+  // ─── FTS5 Search ───────────────────────────────────────────────────────────
+
+  Future<List<Voucher>> searchVouchers({required String companyId, required String queryText}) async {
+    if (queryText.trim().isEmpty) return getVouchers(companyId: companyId);
+    final db = await _dbHelper.database;
+    final sanitizedQuery = queryText.replaceAll(RegExp(r'[^\w\s]'), '');
+    if (sanitizedQuery.trim().isEmpty) return [];
+
+    final rows = await db.rawQuery('''
+      SELECT v.* FROM vouchers v
+      JOIN fts_vouchers f ON v.id = f.voucher_id
+      WHERE fts_vouchers MATCH ? AND v.company_id = ? AND v.is_deleted = 0
+      ORDER BY v.date DESC, v.created_at DESC
+    ''', ['$sanitizedQuery*', companyId]);
+    return rows.map(Voucher.fromMap).toList();
+  }
 }
