@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 
 class SyncApplier {
   /// Applies a single remote change log record to the local SQLite database.
@@ -20,7 +21,16 @@ class SyncApplier {
       final localPayload = await getLocalPayload(db, tableName, recordId);
       
       // Log conflict
-      await logConflict(db, tableName, recordId, operation, localPayload, remotePayload);
+      await logConflict(
+        db,
+        tableName,
+        recordId,
+        '_full_row',
+        jsonEncode(localPayload ?? {}),
+        'local',
+        jsonEncode(remotePayload),
+        'remote',
+      );
       return false; // Did not apply remote change due to conflict
     }
 
@@ -45,25 +55,32 @@ class SyncApplier {
 
   /// Logs a conflict to the sync_conflicts table.
   static Future<void> logConflict(
-    Database db,
-    String tableName,
-    String recordId,
-    String operation,
-    Map<String, dynamic>? localPayload,
-    Map<String, dynamic> remotePayload,
-  ) async {
-    final conflictId = '${DateTime.now().millisecondsSinceEpoch}_$recordId';
-    await db.insert('sync_conflicts', {
-      'id': conflictId,
-      'table_name': tableName,
-      'record_id': recordId,
-      'operation': operation,
-      'local_payload': localPayload != null ? jsonEncode(localPayload) : null,
-      'remote_payload': jsonEncode(remotePayload),
-      'resolved': 0,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-  }
+  Database db,
+  String tableName,
+  String recordId,
+  String fieldName,        // pass '_full_row' for now
+  String localValue,       // JSON string of local record
+  String localDevice,
+  String remoteValue,      // JSON string of remote record  
+  String remoteDevice,
+) async {
+  final conflictId = const Uuid().v4();
+  final now = DateTime.now().toIso8601String();
+  await db.insert('sync_conflicts', {
+    'id': conflictId,
+    'table_name': tableName,
+    'record_id': recordId,
+    'field_name': fieldName,
+    'local_value': localValue,
+    'local_device': localDevice,
+    'local_timestamp': now,
+    'remote_value': remoteValue,
+    'remote_device': remoteDevice,
+    'remote_timestamp': now,
+    'status': 'pending',
+    'created_at': now,
+  });
+}
 
   /// Low-level database applying helper.
   static Future<void> applySyncItem(
