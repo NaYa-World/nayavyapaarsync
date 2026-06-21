@@ -61,7 +61,7 @@ class _GSTReportScreenState extends ConsumerState<GSTReportScreen> with SingleTi
       // Query sales items joined with sale details and party details
       final salesRows = await db.rawQuery('''
         SELECT s.id as sale_id, s.invoice_no, s.date, s.party_id, p.name as party_name, p.gstin as party_gstin,
-               si.qty, si.rate, si.gst_rate, si.gst_amt, si.total, si.hsn_code
+               si.qty, si.rate, si.gst_rate, si.gst_amt, si.total, si.hsn_code, si.total_units, si.unit_price
         FROM sales s
         JOIN sale_items si ON si.sale_id = s.id
         JOIN parties p ON s.party_id = p.id
@@ -72,7 +72,7 @@ class _GSTReportScreenState extends ConsumerState<GSTReportScreen> with SingleTi
       // Query purchase items joined with purchase details and party details
       final purchasesRows = await db.rawQuery('''
         SELECT pr.id as purchase_id, pr.invoice_no, pr.date, pr.party_id, p.name as party_name, p.gstin as party_gstin,
-               pi.qty, pi.rate, pi.gst_rate, pi.gst_amt, pi.total, pi.hsn_code
+               pi.qty, pi.rate, pi.gst_rate, pi.gst_amt, pi.total, pi.hsn_code, pi.total_units, pi.unit_price
         FROM purchases pr
         JOIN purchase_items pi ON pi.purchase_id = pr.id
         JOIN parties p ON pr.party_id = p.id
@@ -122,7 +122,9 @@ class _GSTReportScreenState extends ConsumerState<GSTReportScreen> with SingleTi
       final double gstAmt = (item['gst_amt'] as num).toDouble();
       final double qty = (item['qty'] as num).toDouble();
       final double rate = (item['rate'] as num).toDouble();
-      final double taxable = qty * rate;
+      final double totalUnits = item['total_units'] != null ? (item['total_units'] as num).toDouble() : qty;
+      final double unitPrice = item['unit_price'] != null ? (item['unit_price'] as num).toDouble() : rate;
+      final double taxable = totalUnits * unitPrice;
       final String partyGstin = item['party_gstin'] as String? ?? '';
       final String partyState = _getPartyStateCode(partyGstin, firmStateCode);
 
@@ -148,7 +150,9 @@ class _GSTReportScreenState extends ConsumerState<GSTReportScreen> with SingleTi
       final double gstAmt = (item['gst_amt'] as num).toDouble();
       final double qty = (item['qty'] as num).toDouble();
       final double rate = (item['rate'] as num).toDouble();
-      final double taxable = qty * rate;
+      final double totalUnits = item['total_units'] != null ? (item['total_units'] as num).toDouble() : qty;
+      final double unitPrice = item['unit_price'] != null ? (item['unit_price'] as num).toDouble() : rate;
+      final double taxable = totalUnits * unitPrice;
       final String partyGstin = item['party_gstin'] as String? ?? '';
       final String partyState = _getPartyStateCode(partyGstin, firmStateCode);
 
@@ -181,6 +185,29 @@ class _GSTReportScreenState extends ConsumerState<GSTReportScreen> with SingleTi
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // Disclaimer Banner
+                Container(
+                  margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Disclaimer: GST figures are generated from local data and are under verification. Do not use for final filing without CA approval.',
+                          style: TextStyle(fontSize: 12, color: Colors.black87),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
                 // Month Selector Bar
                 Card(
                   margin: const EdgeInsets.all(12),
@@ -416,7 +443,9 @@ class _GSTReportScreenState extends ConsumerState<GSTReportScreen> with SingleTi
         final item = items[index];
         final double qty = (item['qty'] as num).toDouble();
         final double rate = (item['rate'] as num).toDouble();
-        final double taxable = qty * rate;
+        final double totalUnits = item['total_units'] != null ? (item['total_units'] as num).toDouble() : qty;
+        final double unitPrice = item['unit_price'] != null ? (item['unit_price'] as num).toDouble() : rate;
+        final double taxable = totalUnits * unitPrice;
         final double gstAmt = (item['gst_amt'] as num).toDouble();
         final double gstRate = (item['gst_rate'] as num).toDouble();
         

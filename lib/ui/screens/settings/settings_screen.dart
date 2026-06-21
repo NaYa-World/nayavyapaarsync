@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/settings.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../providers/security_provider.dart';
 import '../../../sync/sync_role_manager.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -105,6 +106,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final authUser = ref.watch(authProvider).user;
+    final securityState = ref.watch(securityProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -170,6 +172,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // Security settings section
+              if (securityState.isBiometricSupported) ...[
+                Text(
+                  'SECURITY SETTINGS',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.secondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: SwitchListTile(
+                    title: const Text('Enable Biometric Unlock'),
+                    subtitle: const Text('Require fingerprint or face scan on app resume'),
+                    value: securityState.isBiometricEnabled,
+                    onChanged: (bool value) async {
+                      await ref.read(securityProvider.notifier).setBiometricsEnabled(value);
+                    },
+                    secondary: const Icon(Icons.fingerprint_rounded),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
 
               // Firm profile fields
               Text(

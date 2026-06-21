@@ -180,5 +180,226 @@ void main() {
       final conflictColNames = conflictColumns.map((col) => col['name'] as String).toList();
       expect(conflictColNames, containsAll(['field_name', 'local_value', 'remote_value', 'status', 'resolved_by']));
     });
+
+    test('v8 to v9 migration preserves existing payments and configures new check constraints/indexes', () async {
+      // 1. Create a version 8 database with the v8 schema
+      final dbV8 = await openDatabase(
+        dbPath,
+        version: 8,
+        onCreate: (db, version) async {
+          // Create parties table so foreign keys work
+          await db.execute('''
+            CREATE TABLE parties (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              type TEXT NOT NULL,
+              phone TEXT NOT NULL,
+              address TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              is_deleted INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+
+          // Create purchases table so indexes can be tested
+          await db.execute('CREATE TABLE purchases (id TEXT PRIMARY KEY, party_id TEXT)');
+          // Create sales table so indexes can be tested
+          await db.execute('CREATE TABLE sales (id TEXT PRIMARY KEY, party_id TEXT)');
+
+          // Version 8 payments schema
+          await db.execute('''
+            CREATE TABLE payments (
+              id TEXT PRIMARY KEY,
+              party_id TEXT NOT NULL,
+              direction TEXT NOT NULL,
+              amount REAL NOT NULL,
+              mode TEXT NOT NULL,
+              date TEXT NOT NULL,
+              reference_no TEXT,
+              linked_invoice_id TEXT,
+              notes TEXT,
+              created_at TEXT NOT NULL,
+              is_deleted INTEGER NOT NULL DEFAULT 0,
+              cheque_no TEXT,
+              cheque_bank TEXT,
+              cheque_date TEXT,
+              cheque_status TEXT CHECK(cheque_status IN ('ISSUED','CLEARED','BOUNCED','CANCELLED')),
+              FOREIGN KEY(party_id) REFERENCES parties(id)
+            )
+          ''');
+        },
+      );
+
+      // Insert a dummy party
+      await dbV8.insert('parties', {
+        'id': 'party-x',
+        'name': 'Test Party',
+        'type': 'CUSTOMER',
+        'phone': '1234567890',
+        'address': 'Test',
+        'created_at': '2026-06-15T12:00:00Z',
+      });
+
+      // Insert a payment with standard ISSUED cheque status
+      await dbV8.insert('payments', {
+        'id': 'pay-v8-1',
+        'party_id': 'party-x',
+        'direction': 'RECEIVED',
+        'amount': 1000.0,
+        'mode': 'CHEQUE',
+        'date': '2026-06-15T12:00:00Z',
+        'created_at': '2026-06-15T12:00:00Z',
+        'cheque_no': 'CHQ-12345',
+        'cheque_bank': 'SBI',
+        'cheque_date': '2026-06-15',
+        'cheque_status': 'ISSUED',
+      });
+
+      await dbV8.close();
+
+      // 2. Open using DbHelper (triggers v9 migration)
+      final database = await dbHelper.database;
+
+      // 3. Verify existing payment details are preserved
+      final paymentRows = await database.query('payments');
+      expect(paymentRows.length, 1);
+      expect(paymentRows.first['id'], 'pay-v8-1');
+      expect(paymentRows.first['cheque_status'], 'ISSUED');
+
+      // 4. Try inserting a payment with 'RECEIVED' and 'PENDING' status (new in v9)
+      await database.insert('payments', {
+        'id': 'pay-v9-recv',
+        'party_id': 'party-x',
+        'direction': 'RECEIVED',
+        'amount': 2000.0,
+        'mode': 'CHEQUE',
+        'date': '2026-06-15T12:00:00Z',
+        'created_at': '2026-06-15T12:00:00Z',
+        'cheque_no': 'CHQ-54321',
+        'cheque_bank': 'HDFC',
+        'cheque_date': '2026-06-15',
+        'cheque_status': 'RECEIVED',
+      });
+
+      await database.insert('payments', {
+        'id': 'pay-v9-pend',
+        'party_id': 'party-x',
+        'direction': 'RECEIVED',
+        'amount': 3000.0,
+        'mode': 'CHEQUE',
+        'date': '2026-06-15T12:00:00Z',
+        'created_at': '2026-06-15T12:00:00Z',
+        'cheque_no': 'CHQ-67890',
+        'cheque_bank': 'ICICI',
+        'cheque_date': '2026-06-15',
+        'cheque_status': 'PENDING',
+      });
+
+      final verifyStatus = await database.query('payments', where: "id IN ('pay-v9-recv', 'pay-v9-pend')");
+      expect(verifyStatus.length, 2);
+
+      // 5. Verify indexes are present in the upgraded database
+      final indexes = await database.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+      );
+      final indexNames = indexes.map((row) => row['name'] as String).toList();
+      expect(indexNames, contains('idx_payments_party_id'));
+      expect(indexNames, contains('idx_purchases_party_id'));
+      expect(indexNames, contains('idx_sales_party_id'));
+    });
+
+    test('v9 to v10 migration creates double-entry tables, indexes, and virtual tables', () async {
+      // 1. Create a version 9 database with standard v9 schema
+      final dbV9 = await openDatabase(
+        dbPath,
+        version: 9,
+        onCreate: (db, version) async {
+          await db.execute('CREATE TABLE payments (id TEXT PRIMARY KEY)');
+        },
+      );
+      await dbV9.close();
+
+      // 2. Open using DbHelper (triggers v10 migration)
+      final database = await dbHelper.database;
+
+      // 3. Verify all Version 10 tables exist
+      final tables = await database.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+      );
+      final tableNames = tables.map((row) => row['name'] as String).toList();
+
+      expect(tableNames, contains('ledger_groups'));
+      expect(tableNames, contains('ledgers'));
+      expect(tableNames, contains('vouchers'));
+      expect(tableNames, contains('voucher_lines'));
+      expect(tableNames, contains('bill_allocations'));
+      expect(tableNames, contains('godowns'));
+      expect(tableNames, contains('batches'));
+      expect(tableNames, contains('stock_movements'));
+      expect(tableNames, contains('bank_instruments'));
+      expect(tableNames, contains('bank_reconciliation'));
+
+      // 4. Verify Virtual Tables (FTS5) exist
+      expect(tableNames, contains('fts_vouchers'));
+      expect(tableNames, contains('fts_ledgers'));
+
+      // 5. Verify indexes exist
+      final indexes = await database.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+      );
+      final indexNames = indexes.map((row) => row['name'] as String).toList();
+      expect(indexNames, contains('idx_vouchers_company_date'));
+      expect(indexNames, contains('idx_voucher_lines_voucher'));
+      expect(indexNames, contains('idx_stock_movements_item'));
+    });
+
+    test('v11 to v12 migration adds stock_group column to items table', () async {
+      // 1. Create a version 11 database
+      final dbV11 = await openDatabase(
+        dbPath,
+        version: 11,
+        onCreate: (db, version) async {
+          // Version 11 items schema (without stock_group)
+          await db.execute('''
+            CREATE TABLE items (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              category TEXT CHECK(category IN ('SEED', 'FERTILISER')) NOT NULL,
+              hsn_code TEXT NOT NULL,
+              gst_rate REAL NOT NULL,
+              primary_unit TEXT CHECK(primary_unit IN ('BAG', 'BOX')) NOT NULL,
+              bag_weight_kg REAL,
+              box_weight_kg REAL,
+              low_stock_threshold REAL NOT NULL DEFAULT 10.0,
+              created_at TEXT NOT NULL,
+              is_deleted INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+        },
+      );
+
+      // Insert an item in v11 items
+      await dbV11.insert('items', {
+        'id': 'item-v11-1',
+        'name': 'Paddy Seed',
+        'category': 'SEED',
+        'hsn_code': '12099190',
+        'gst_rate': 5.0,
+        'primary_unit': 'BAG',
+        'bag_weight_kg': 25.0,
+        'low_stock_threshold': 10.0,
+        'created_at': '2026-06-15T12:00:00Z',
+        'is_deleted': 0,
+      });
+
+      await dbV11.close();
+
+      // 2. Open using DbHelper (triggers v12 migration)
+      final database = await dbHelper.database;
+
+      // 3. Verify stock_group exists and defaults to 'General'
+      final items = await database.query('items');
+      expect(items.length, 1);
+      expect(items.first['stock_group'], 'General');
+    });
   });
 }

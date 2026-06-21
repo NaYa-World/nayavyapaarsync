@@ -115,5 +115,222 @@ void main() {
       expect(sales.length, 1);
       expect(sales.first['invoice_no'], 'SAL-TALLY-001');
     });
+
+    test('Tally XML Import Idempotency and Duplicate Guard', () async {
+      const tallyXml = '''
+<ENVELOPE>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDATA>
+        <TALLYMESSAGE TALLYBUILDNO="100">
+          <COMPANY NAME="Balaji Trading Co">
+            <NAME>Balaji Trading Co</NAME>
+          </COMPANY>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <LEDGER NAME="Sri Balaji Agro">
+            <PARENT>Sundry Creditors</PARENT>
+          </LEDGER>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <VOUCHER VCHTYPE="Purchase" VOUCHERNUMBER="PUR-IDEMP-001">
+            <DATE>20260601</DATE>
+            <PARTYLEDGERNAME>Sri Balaji Agro</PARTYLEDGERNAME>
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Super Hybrid Maize</STOCKITEMNAME>
+              <BILLEDQTY>100.0 BAG</BILLEDQTY>
+              <RATE>100.0</RATE>
+              <AMOUNT>-10000.0</AMOUNT>
+            </ALLINVENTORYENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+''';
+
+      // First import
+      final result1 = await TallyImportService().importTallyXml(tallyXml);
+      expect(result1.purchasesImported, 1);
+      expect(result1.logs.any((l) => l.contains('Detected Tally Version: Tally Prime')), true);
+      expect(result1.logs.any((l) => l.contains('Company detected: Balaji Trading Co')), true);
+
+      // Second import (should skip voucher)
+      final result2 = await TallyImportService().importTallyXml(tallyXml);
+      expect(result2.purchasesImported, 0); // Idempotent!
+      expect(result2.logs.any((l) => l.contains('Duplicate voucher skipped')), true);
+    });
+
+    test('Tally Build Version and Multi-Company Detection', () async {
+      const multiCompanyXml = '''
+<ENVELOPE>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDATA>
+        <TALLYMESSAGE TALLYBUILDNO="72">
+          <COMPANY NAME="Company Alpha"></COMPANY>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE TALLYBUILDNO="72">
+          <COMPANY NAME="Company Beta"></COMPANY>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+''';
+
+      final result = await TallyImportService().importTallyXml(multiCompanyXml);
+      expect(result.logs.any((l) => l.contains('Detected Tally Version: Tally 7.2')), true);
+      expect(result.logs.any((l) => l.contains('Found multiple companies: Company Alpha, Company Beta')), true);
+      expect(result.logs.any((l) => l.contains('Selected company for import: Company Alpha')), true);
+    });
+    test('StockIn Voucher Import and Nested GST Parsing', () async {
+      const stockInXml = '''
+<ENVELOPE>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDATA>
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="Nested GST Item" RESERVEDNAME="">
+            <PARENT>Agro Chemicals</PARENT>
+            <BASEUNITS>BOX</BASEUNITS>
+            <HSNCODE>3808</HSNCODE>
+            <GSTDETAILS.LIST>
+              <STATEGSTDETAILS.LIST>
+                <RATEDETAILS.LIST>
+                  <GSTRATE>18.00</GSTRATE>
+                </RATEDETAILS.LIST>
+              </STATEGSTDETAILS.LIST>
+            </GSTDETAILS.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+        <TALLYMESSAGE>
+          <VOUCHER VCHTYPE="StockIn" VOUCHERNUMBER="STK-IN-001">
+            <DATE>20260605</DATE>
+            <!-- Missing PARTYLEDGERNAME intentionally -->
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Nested GST Item</STOCKITEMNAME>
+              <BILLEDQTY>50.0 BOX</BILLEDQTY>
+              <RATE>200.0</RATE>
+              <AMOUNT>-10000.0</AMOUNT>
+              <BATCHNAME>BATCH-STK-11</BATCHNAME>
+            </ALLINVENTORYENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+''';
+
+      final result = await TallyImportService().importTallyXml(stockInXml);
+      expect(result.itemsImported, 1);
+      expect(result.purchasesImported, 1); // StockIn should be parsed as purchase
+
+      final db = await dbHelper.database;
+      
+      final items = await db.query('items');
+      expect(items.length, 1);
+      expect(items.first['gst_rate'], 18.0);
+      expect(items.first['stock_group'], 'Agro Chemicals');
+
+      final purchases = await db.query('purchases');
+      expect(purchases.length, 1);
+      expect(purchases.first['invoice_no'], 'STK-IN-001');
+
+      final parties = await db.query('parties', where: 'id = ?', whereArgs: [purchases.first['party_id']]);
+      expect(parties.first['name'], 'Stock Adjustment Supplier');
+
+      final stockMovements = await db.query('stock_movements');
+      expect(stockMovements.length, 1);
+      expect(stockMovements.first['qty'], 50.0);
+      expect(stockMovements.first['movement_type'], 'IN');
+    });
+
+    test('Import Daybook and Stock Summary details with Opening Balances', () async {
+      const tallyXml = '''
+<ENVELOPE>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDATA>
+        <!-- Stock item with opening balance -->
+        <TALLYMESSAGE>
+          <STOCKITEM NAME="Maize Seeds Special">
+            <BASEUNITS>BAG</BASEUNITS>
+            <HSNCODE>12099190</HSNCODE>
+            <OPENINGBALANCE>120.00 BAG</OPENINGBALANCE>
+            <OPENINGVALUE>-18000.00</OPENINGVALUE>
+            <OPENINGRATE>150.00/BAG</OPENINGRATE>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+
+        <!-- Payment voucher (double-entry ledger entries only) -->
+        <TALLYMESSAGE>
+          <VOUCHER VCHTYPE="Payment" VOUCHERNUMBER="PAY-001">
+            <DATE>20260602</DATE>
+            <PARTYLEDGERNAME>Sri Balaji Agro</PARTYLEDGERNAME>
+            <NARRATION>Payment to supplier for pending bill</NARRATION>
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>Sri Balaji Agro</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-10500.00</AMOUNT>
+            </LEDGERENTRIES.LIST>
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>Cash Account</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>10500.00</AMOUNT>
+            </LEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+''';
+
+      final result = await TallyImportService().importTallyXml(tallyXml);
+      expect(result.itemsImported, 1);
+      
+      final db = await dbHelper.database;
+
+      // 1. Verify Stock Item opening balance
+      final items = await db.query('items', where: "name = ?", whereArgs: ["Maize Seeds Special"]);
+      expect(items.length, 1);
+
+      // Verify opening stock movement got created
+      final stockMovements = await db.query('stock_movements', where: "ref_voucher_id = ?", whereArgs: ["opening_stock_voucher"]);
+      expect(stockMovements.length, 1);
+      expect(stockMovements.first['qty'], 120.0);
+      expect(stockMovements.first['rate'], 150.0);
+      expect(stockMovements.first['movement_type'], 'IN');
+
+      // Verify opening batch got created
+      final batches = await db.query('batches', where: "stock_item_id = ?", whereArgs: [items.first['id']]);
+      expect(batches.length, 1);
+      expect(batches.first['batch_no'], 'OP-BATCH');
+
+      // 2. Verify Payment voucher
+      final vouchers = await db.query('vouchers', where: "voucher_no = ?", whereArgs: ["PAY-001"]);
+      expect(vouchers.length, 1);
+      expect(vouchers.first['type'], 'PAYMENT');
+      expect(vouchers.first['narration'], 'Payment to supplier for pending bill');
+
+      // Verify voucher lines
+      final lines = await db.query('voucher_lines', where: "voucher_id = ?", whereArgs: [vouchers.first['id']]);
+      expect(lines.length, 2);
+
+      final debitLine = lines.firstWhere((l) => (l['dr_amount'] as num) > 0);
+      final creditLine = lines.firstWhere((l) => (l['cr_amount'] as num) > 0);
+
+      // Verify debitLine is for the supplier and creditLine is for cash
+      final debitLedger = await db.query('ledgers', where: "id = ?", whereArgs: [debitLine['ledger_id']]);
+      expect(debitLedger.first['name'], 'Sri Balaji Agro');
+      expect(debitLine['dr_amount'], 10500.0);
+
+      final creditLedger = await db.query('ledgers', where: "id = ?", whereArgs: [creditLine['ledger_id']]);
+      expect(creditLedger.first['name'], 'Cash Account');
+      expect(creditLine['cr_amount'], 10500.0);
+    });
   });
 }

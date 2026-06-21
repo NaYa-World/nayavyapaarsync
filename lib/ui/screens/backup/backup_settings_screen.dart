@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -86,7 +87,39 @@ class _BackupSettingsScreenState extends ConsumerState<BackupSettingsScreen> {
       });
 
       final file = File(result.files.single.path!);
-      final xmlContent = await file.readAsString();
+      final bytes = await file.readAsBytes();
+
+      // Detect and convert encoding
+      String xmlContent;
+      if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+        // UTF-16 Little Endian (what Tally exports)
+        final codeUnits = <int>[];
+        for (int i = 2; i < bytes.length - 1; i += 2) {
+          codeUnits.add(bytes[i] | (bytes[i + 1] << 8));
+        }
+        xmlContent = String.fromCharCodes(codeUnits);
+      } else if (bytes.length >= 2 && bytes[0] == 0x3C && bytes[1] == 0x00) {
+        // UTF-16 Little Endian without BOM (starts with '<')
+        final codeUnits = <int>[];
+        for (int i = 0; i < bytes.length - 1; i += 2) {
+          codeUnits.add(bytes[i] | (bytes[i + 1] << 8));
+        }
+        xmlContent = String.fromCharCodes(codeUnits);
+      } else if (bytes.length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) {
+        // UTF-16 Big Endian
+        final codeUnits = <int>[];
+        for (int i = 2; i < bytes.length - 1; i += 2) {
+          codeUnits.add((bytes[i] << 8) | bytes[i + 1]);
+        }
+        xmlContent = String.fromCharCodes(codeUnits);
+      } else if (bytes.length >= 3 &&
+          bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+        // UTF-8 with BOM — strip BOM
+        xmlContent = utf8.decode(bytes.sublist(3), allowMalformed: true);
+      } else {
+        // Plain UTF-8
+        xmlContent = utf8.decode(bytes, allowMalformed: true);
+      }
 
       final importResult = await TallyImportService().importTallyXml(xmlContent);
 

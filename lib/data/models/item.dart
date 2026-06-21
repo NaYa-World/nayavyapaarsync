@@ -10,6 +10,7 @@ class Item {
   final double lowStockThreshold;
   final DateTime createdAt;
   final bool isDeleted;
+  final String stockGroup;
 
   Item({
     required this.id,
@@ -23,6 +24,7 @@ class Item {
     this.lowStockThreshold = 10.0,
     required this.createdAt,
     this.isDeleted = false,
+    this.stockGroup = 'General',
   });
 
   Item copyWith({
@@ -37,6 +39,7 @@ class Item {
     double? lowStockThreshold,
     DateTime? createdAt,
     bool? isDeleted,
+    String? stockGroup,
   }) {
     return Item(
       id: id ?? this.id,
@@ -50,6 +53,7 @@ class Item {
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       createdAt: createdAt ?? this.createdAt,
       isDeleted: isDeleted ?? this.isDeleted,
+      stockGroup: stockGroup ?? this.stockGroup,
     );
   }
 
@@ -66,6 +70,7 @@ class Item {
       'low_stock_threshold': lowStockThreshold,
       'created_at': createdAt.toIso8601String(),
       'is_deleted': isDeleted ? 1 : 0,
+      'stock_group': stockGroup,
     };
   }
 
@@ -82,6 +87,7 @@ class Item {
       lowStockThreshold: (map['low_stock_threshold'] as num).toDouble(),
       createdAt: DateTime.parse(map['created_at'] as String),
       isDeleted: (map['is_deleted'] as int) == 1,
+      stockGroup: map['stock_group'] as String? ?? 'General',
     );
   }
 }

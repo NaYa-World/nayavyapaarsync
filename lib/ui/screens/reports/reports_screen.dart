@@ -8,6 +8,8 @@ import '../../../providers/item_provider.dart';
 import '../../../providers/party_provider.dart';
 import '../../../providers/transaction_provider.dart';
 import '../../../services/pdf_service.dart';
+import '../../../providers/double_entry_provider.dart';
+import '../../../domain/services/reports_engine.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
@@ -96,6 +98,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       DropdownMenuItem(value: 'OUTSTANDING', child: Text('Party Outstanding Ledger (బాకీల పట్టిక)')),
                       DropdownMenuItem(value: 'PURCHASES', child: Text('Purchase Register (కొనుగోలు రిజిస్టర్)')),
                       DropdownMenuItem(value: 'SALES', child: Text('Sale Register (అమ్మకాల రిజిస్టర్)')),
+                      DropdownMenuItem(value: 'TRIAL_BALANCE', child: Text('Trial Balance (వ్యవహారాల నిల్వల పట్టిక)')),
+                      DropdownMenuItem(value: 'PROFIT_LOSS', child: Text('Profit & Loss (లాభనష్టాల నివేదిక)')),
+                      DropdownMenuItem(value: 'BALANCE_SHEET', child: Text('Balance Sheet (ఆస్తి అప్పుల పట్టిక)')),
                     ],
                     onChanged: (val) {
                       if (val != null) {
@@ -157,6 +162,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         return _buildRegisterReport(theme, isPurchase: true);
       case 'SALES':
         return _buildRegisterReport(theme, isPurchase: false);
+      case 'TRIAL_BALANCE':
+        return _buildTrialBalanceReport(theme);
+      case 'PROFIT_LOSS':
+        return _buildProfitLossReport(theme);
+      case 'BALANCE_SHEET':
+        return _buildBalanceSheetReport(theme);
       default:
         return const SizedBox();
     }
@@ -507,6 +518,150 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ================= TRIAL BALANCE =================
+  Widget _buildTrialBalanceReport(ThemeData theme) {
+    final tbAsync = ref.watch(trialBalanceProvider);
+    return tbAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (balances) {
+        double totalDr = 0.0;
+        double totalCr = 0.0;
+        for (final bal in balances) {
+          if (bal.balanceType == 'DR') {
+            totalDr += bal.closingBalance;
+          } else {
+            totalCr += bal.closingBalance;
+          }
+        }
+
+        return _buildPreviewTable(
+          title: 'Trial Balance Report',
+          headers: ['Ledger Name', 'Group', 'Nature', 'Debit (Dr)', 'Credit (Cr)'],
+          dataRows: balances.map((bal) {
+            return [
+              bal.name,
+              bal.groupName,
+              bal.groupNature,
+              bal.balanceType == 'DR' ? IndianFormatUtils.formatCurrency(bal.closingBalance) : '-',
+              bal.balanceType == 'CR' ? IndianFormatUtils.formatCurrency(bal.closingBalance) : '-',
+            ];
+          }).toList(),
+          totalsRow: [
+            'Total',
+            '-',
+            '-',
+            IndianFormatUtils.formatCurrency(totalDr),
+            IndianFormatUtils.formatCurrency(totalCr),
+          ],
+        );
+      },
+    );
+  }
+
+  // ================= PROFIT & LOSS =================
+  Widget _buildProfitLossReport(ThemeData theme) {
+    final plAsync = ref.watch(profitLossProvider);
+    return plAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (plData) {
+        final double totalIncome = plData['total_income'] as double? ?? 0.0;
+        final double totalExpenses = plData['total_expenses'] as double? ?? 0.0;
+        final double netProfit = plData['net_profit'] as double? ?? 0.0;
+        final List<LedgerBalance> incomes = List<LedgerBalance>.from(plData['incomes'] ?? []);
+        final List<LedgerBalance> expenses = List<LedgerBalance>.from(plData['expenses'] ?? []);
+
+        final List<List<String>> dataRows = [];
+        // Add Incomes
+        for (final inc in incomes) {
+          dataRows.add([
+            inc.name,
+            'Income',
+            '-',
+            IndianFormatUtils.formatCurrency(inc.closingBalance),
+          ]);
+        }
+        // Add Expenses
+        for (final exp in expenses) {
+          dataRows.add([
+            exp.name,
+            'Expense',
+            IndianFormatUtils.formatCurrency(exp.closingBalance),
+            '-',
+          ]);
+        }
+
+        return _buildPreviewTable(
+          title: 'Profit & Loss Statement',
+          headers: ['Particulars', 'Category', 'Debit (Expenses)', 'Credit (Incomes)'],
+          dataRows: dataRows,
+          totalsRow: [
+            netProfit >= 0 ? 'Net Profit: ${IndianFormatUtils.formatCurrency(netProfit)}' : 'Net Loss: ${IndianFormatUtils.formatCurrency(netProfit.abs())}',
+            '-',
+            IndianFormatUtils.formatCurrency(totalExpenses),
+            IndianFormatUtils.formatCurrency(totalIncome),
+          ],
+        );
+      },
+    );
+  }
+
+  // ================= BALANCE SHEET =================
+  Widget _buildBalanceSheetReport(ThemeData theme) {
+    final bsAsync = ref.watch(balanceSheetProvider);
+    return bsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (bsData) {
+        final double totalAssets = bsData['total_assets'] as double? ?? 0.0;
+        final double netProfit = bsData['net_profit'] as double? ?? 0.0;
+        final double totalLiabilitiesAndEquity = bsData['total_liabilities_and_equity'] as double? ?? 0.0;
+        final List<LedgerBalance> assets = List<LedgerBalance>.from(bsData['assets'] ?? []);
+        final List<LedgerBalance> liabilities = List<LedgerBalance>.from(bsData['liabilities'] ?? []);
+
+        final List<List<String>> dataRows = [];
+        // Add Assets
+        for (final asset in assets) {
+          dataRows.add([
+            asset.name,
+            'Asset',
+            IndianFormatUtils.formatCurrency(asset.closingBalance),
+            '-',
+          ]);
+        }
+        // Add Liabilities
+        for (final liab in liabilities) {
+          dataRows.add([
+            liab.name,
+            'Liability',
+            '-',
+            IndianFormatUtils.formatCurrency(liab.closingBalance),
+          ]);
+        }
+        // Add Net Profit / Retained Earnings
+        dataRows.add([
+          'Net Profit (Retained Earnings)',
+          'Equity',
+          '-',
+          IndianFormatUtils.formatCurrency(netProfit),
+        ]);
+
+        return _buildPreviewTable(
+          title: 'Balance Sheet',
+          headers: ['Particulars', 'Type', 'Assets (Dr)', 'Liabilities & Equity (Cr)'],
+          dataRows: dataRows,
+          totalsRow: [
+            'Total Balances',
+            '-',
+            IndianFormatUtils.formatCurrency(totalAssets),
+            IndianFormatUtils.formatCurrency(totalLiabilitiesAndEquity),
+          ],
+        );
+      },
     );
   }
 
