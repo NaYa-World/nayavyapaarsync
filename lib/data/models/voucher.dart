@@ -10,6 +10,7 @@ class Voucher {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isDeleted;
+  final bool isCancelled;
 
   Voucher({
     required this.id,
@@ -23,6 +24,7 @@ class Voucher {
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
+    this.isCancelled = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -38,6 +40,7 @@ class Voucher {
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'is_deleted': isDeleted ? 1 : 0,
+      'is_cancelled': isCancelled ? 1 : 0,
     };
   }
 
@@ -54,6 +57,7 @@ class Voucher {
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
       isDeleted: (map['is_deleted'] as int) == 1,
+      isCancelled: (map['is_cancelled'] as int? ?? 0) == 1,
     );
   }
 }

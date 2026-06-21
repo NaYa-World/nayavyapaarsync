@@ -750,16 +750,54 @@ class TallyImportService {
           gstTotal += gstAmt;
         }
 
+        double finalGstTotal = gstTotal;
+        double finalGrandTotal = subtotal + gstTotal;
+        double finalSubtotal = subtotal;
+
+        if (parsedVoucherLines.isNotEmpty) {
+          double exactGst = 0.0;
+          for (final line in parsedVoucherLines) {
+            final String name = line['ledger_name'].toLowerCase();
+            if (name.contains('cgst') || name.contains('sgst') || name.contains('igst') || name.contains('utgst') || name.contains('gst')) {
+              exactGst += line['amount'];
+            }
+          }
+
+          double exactGrand = 0.0;
+          for (final line in parsedVoucherLines) {
+            final String name = line['ledger_name'].toLowerCase();
+            if (name == partyName.toLowerCase()) {
+              exactGrand = line['amount'];
+              break;
+            }
+          }
+          if (exactGrand == 0.0) {
+            double debitsSum = 0.0;
+            double creditsSum = 0.0;
+            for (final line in parsedVoucherLines) {
+              if (line['is_debit'] as bool) {
+                debitsSum += line['amount'] as double;
+              } else {
+                creditsSum += line['amount'] as double;
+              }
+            }
+            exactGrand = debitsSum > creditsSum ? debitsSum : creditsSum;
+          }
+
+          finalGstTotal = exactGst;
+          finalGrandTotal = exactGrand;
+          finalSubtotal = finalGrandTotal - finalGstTotal;
+        }
+
         if (isSale) {
-          final grandTotal = subtotal + gstTotal;
           final sale = Sale(
             id: transactionId,
             invoiceNo: invoiceNo,
             partyId: partyId ?? 'company_default',
             date: date,
-            subtotal: subtotal,
-            gstTotal: gstTotal,
-            grandTotal: grandTotal,
+            subtotal: finalSubtotal,
+            gstTotal: finalGstTotal,
+            grandTotal: finalGrandTotal,
             paymentStatus: 'PAID',
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
@@ -829,7 +867,7 @@ class TallyImportService {
               id: _uuid.v4(),
               voucherId: transactionId,
               ledgerId: partyId != null ? 'led_$partyId' : 'led_cash',
-              drAmount: grandTotal,
+              drAmount: finalGrandTotal,
               crAmount: 0.0,
               narration: 'To party account',
             );
@@ -841,19 +879,19 @@ class TallyImportService {
               voucherId: transactionId,
               ledgerId: 'led_sales_ac',
               drAmount: 0.0,
-              crAmount: subtotal,
+              crAmount: finalSubtotal,
               narration: 'Sales revenue',
             );
             await txn.insert('voucher_lines', lineSales.toMap());
 
             // CR GST Output
-            if (gstTotal > 0) {
+            if (finalGstTotal > 0) {
               final lineGst = VoucherLine(
                 id: _uuid.v4(),
                 voucherId: transactionId,
                 ledgerId: 'led_gst_output',
                 drAmount: 0.0,
-                crAmount: gstTotal,
+                crAmount: finalGstTotal,
                 narration: 'GST tax collected',
               );
               await txn.insert('voucher_lines', lineGst.toMap());
@@ -877,15 +915,14 @@ class TallyImportService {
 
           salesImported++;
         } else if (isPurchase) {
-          final grandTotal = subtotal + gstTotal;
           final purchase = Purchase(
             id: transactionId,
             invoiceNo: invoiceNo,
             partyId: partyId ?? 'company_default',
             date: date,
-            subtotal: subtotal,
-            gstTotal: gstTotal,
-            grandTotal: grandTotal,
+            subtotal: finalSubtotal,
+            gstTotal: finalGstTotal,
+            grandTotal: finalGrandTotal,
             paymentStatus: 'PAID',
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
@@ -955,7 +992,7 @@ class TallyImportService {
               voucherId: transactionId,
               ledgerId: partyId != null ? 'led_$partyId' : 'led_cash',
               drAmount: 0.0,
-              crAmount: grandTotal,
+              crAmount: finalGrandTotal,
               narration: 'From supplier account',
             );
             await txn.insert('voucher_lines', lineParty.toMap());
@@ -965,19 +1002,19 @@ class TallyImportService {
               id: _uuid.v4(),
               voucherId: transactionId,
               ledgerId: 'led_purchases_ac',
-              drAmount: subtotal,
+              drAmount: finalSubtotal,
               crAmount: 0.0,
               narration: 'Purchase cost',
             );
             await txn.insert('voucher_lines', linePurchases.toMap());
 
             // DR GST Input
-            if (gstTotal > 0) {
+            if (finalGstTotal > 0) {
               final lineGst = VoucherLine(
                 id: _uuid.v4(),
                 voucherId: transactionId,
                 ledgerId: 'led_gst_input',
-                drAmount: gstTotal,
+                drAmount: finalGstTotal,
                 crAmount: 0.0,
                 narration: 'GST tax input credit',
               );

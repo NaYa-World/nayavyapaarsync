@@ -29,7 +29,7 @@ class BrsRepository {
       FROM bank_instruments bi
       JOIN vouchers v ON bi.voucher_id = v.id
       JOIN voucher_lines vl ON vl.voucher_id = v.id
-      WHERE vl.ledger_id = ? AND bi.status != 'CLEARED' AND v.is_deleted = 0
+      WHERE vl.ledger_id = ? AND bi.status != 'CLEARED' AND v.is_deleted = 0 AND v.is_cancelled = 0
     ''', [bankLedgerId]);
     return rows;
   }

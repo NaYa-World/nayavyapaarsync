@@ -55,10 +55,10 @@ class VoucherRepository {
     List<dynamic>? whereArgs;
 
     if (companyId != null && fyId != null) {
-      whereClause = activeOnly ? 'company_id = ? AND fy_id = ? AND is_deleted = 0' : 'company_id = ? AND fy_id = ?';
+      whereClause = activeOnly ? 'company_id = ? AND fy_id = ? AND is_deleted = 0 AND is_cancelled = 0' : 'company_id = ? AND fy_id = ?';
       whereArgs = [companyId, fyId];
     } else if (companyId != null) {
-      whereClause = activeOnly ? 'company_id = ? AND is_deleted = 0' : 'company_id = ?';
+      whereClause = activeOnly ? 'company_id = ? AND is_deleted = 0 AND is_cancelled = 0' : 'company_id = ?';
       whereArgs = [companyId];
     }
 
@@ -110,7 +110,7 @@ class VoucherRepository {
     final rows = await db.rawQuery('''
       SELECT v.* FROM vouchers v
       JOIN fts_vouchers f ON v.id = f.voucher_id
-      WHERE fts_vouchers MATCH ? AND v.company_id = ? AND v.is_deleted = 0
+      WHERE fts_vouchers MATCH ? AND v.company_id = ? AND v.is_deleted = 0 AND v.is_cancelled = 0
       ORDER BY v.date DESC, v.created_at DESC
     ''', ['$sanitizedQuery*', companyId]);
     return rows.map(Voucher.fromMap).toList();

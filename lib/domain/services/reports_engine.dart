@@ -47,7 +47,7 @@ class ReportsEngine {
       SELECT vl.ledger_id, SUM(vl.dr_amount) as total_dr, SUM(vl.cr_amount) as total_cr
       FROM voucher_lines vl
       JOIN vouchers v ON vl.voucher_id = v.id
-      WHERE v.company_id = ? AND v.fy_id = ? AND v.is_deleted = 0
+      WHERE v.company_id = ? AND v.fy_id = ? AND v.is_deleted = 0 AND v.is_cancelled = 0
       GROUP BY vl.ledger_id
     ''', [companyId, fyId]);
 
@@ -209,7 +209,7 @@ class ReportsEngine {
       SELECT SUM(vl.dr_amount) as total_dr, SUM(vl.cr_amount) as total_cr
       FROM voucher_lines vl
       JOIN vouchers v ON vl.voucher_id = v.id
-      WHERE vl.ledger_id = ? AND v.is_deleted = 0
+      WHERE vl.ledger_id = ? AND v.is_deleted = 0 AND v.is_cancelled = 0
     ''', [bankLedgerId]);
 
     final drTotal = (bookRow.first['total_dr'] as num?)?.toDouble() ?? 0.0;

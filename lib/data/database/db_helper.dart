@@ -22,7 +22,7 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     return await openDatabase(
       path,
-      version: 12,
+      version: 13,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -655,6 +655,15 @@ class DbHelper {
         await db.execute("ALTER TABLE items ADD COLUMN stock_group TEXT DEFAULT 'General'");
       }
     }
+
+    if (oldVersion < 13) {
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='vouchers'"
+      );
+      if (tables.isNotEmpty) {
+        await db.execute("ALTER TABLE vouchers ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0");
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -1046,6 +1055,7 @@ class DbHelper {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         is_deleted INTEGER NOT NULL DEFAULT 0,
+        is_cancelled INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY(company_id) REFERENCES companies(id),
         FOREIGN KEY(fy_id) REFERENCES financial_years(id)
       )
