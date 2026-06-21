@@ -30,7 +30,6 @@ class FyGuard {
     if (userRole == 'CA' || userRole == 'ADMIN') {
       return; // Auditor / Administrator bypass
     }
-
     final db = await _db.database;
 
     String? resolvedCompanyId = companyId;
