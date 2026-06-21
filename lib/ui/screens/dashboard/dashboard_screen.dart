@@ -25,6 +25,7 @@ import '../company/company_list_screen.dart';
 import '../reports/gst_report_screen.dart';
 import '../voucher/voucher_entry_screen.dart';
 import '../brs/brs_screen.dart';
+import '../import/import_wizard_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -894,6 +895,14 @@ class DashboardScreen extends ConsumerWidget {
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const UserManagementScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.upload_file_rounded),
+                  title: const Text('Excel / CSV Import'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ImportWizardScreen()));
                   },
                 ),
                 const Divider(),
