@@ -335,12 +335,29 @@ class SyncQueueService {
       final day = now.day.toString().padLeft(2, '0');
       final snapshotFileName = 'godown_snapshot_$year-$month-${day}_T$secondsSinceEpoch.db';
 
+      final String tempRawPath = join(await getDatabasesPath(), 'temp_snap_raw.db');
+      final File tempRawFile = File(tempRawPath);
+      if (await tempRawFile.exists()) {
+        await tempRawFile.delete();
+      }
+
+      try {
+        await db.execute("VACUUM INTO '$tempRawPath'");
+      } catch (_) {
+        await dbFile.copy(tempRawPath);
+      }
+
       final String tempSnapPath = join(await getDatabasesPath(), 'temp_snap.db');
       final File tempSnapFile = File(tempSnapPath);
       if (await tempSnapFile.exists()) {
         await tempSnapFile.delete();
       }
-      await EncryptionHelper.encryptFile(dbFile, tempSnapFile);
+
+      await EncryptionHelper.encryptFile(tempRawFile, tempSnapFile);
+
+      if (await tempRawFile.exists()) {
+        await tempRawFile.delete();
+      }
 
       // Perform GDrive upload
       final snapshotId = await GDriveService().uploadSnapshot(tempSnapFile, snapshotFileName);
