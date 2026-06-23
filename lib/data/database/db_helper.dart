@@ -22,7 +22,7 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     return await openDatabase(
       path,
-      version: 13,
+      version: 14,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -664,6 +664,53 @@ class DbHelper {
         await db.execute("ALTER TABLE vouchers ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0");
       }
     }
+
+    if (oldVersion < 14) {
+      final List<String> legacyTables = ['sales', 'purchases', 'payments', 'expenses', 'parties', 'items'];
+      for (final table in legacyTables) {
+        final tables = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='$table'"
+        );
+        if (tables.isNotEmpty) {
+          final columns = await db.rawQuery("PRAGMA table_info($table)");
+          final existingCols = columns.map((r) => r['name'] as String).toSet();
+          if (!existingCols.contains('company_id')) {
+            await db.execute("ALTER TABLE $table ADD COLUMN company_id TEXT DEFAULT 'company_default'");
+          }
+        }
+      }
+
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_purchase_items_item_id ON purchase_items(item_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_sale_items_item_id ON sale_items(item_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_company ON purchases(company_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_company ON sales(company_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_company ON payments(company_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_expenses_company ON expenses(company_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_parties_company ON parties(company_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_items_company ON items(company_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_is_deleted ON purchases(id, is_deleted)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_is_deleted ON sales(id, is_deleted)');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS stock_balances (
+          item_id TEXT PRIMARY KEY,
+          qty REAL NOT NULL DEFAULT 0.0
+        )
+      ''');
+
+      await db.execute('''
+        INSERT OR REPLACE INTO stock_balances (item_id, qty)
+        SELECT item_id, SUM(qty) FROM (
+          SELECT pi.item_id, pi.qty FROM purchase_items pi
+          JOIN purchases p ON pi.purchase_id = p.id
+          WHERE p.is_deleted = 0
+          UNION ALL
+          SELECT si.item_id, -si.qty FROM sale_items si
+          JOIN sales s ON si.sale_id = s.id
+          WHERE s.is_deleted = 0
+        ) GROUP BY item_id
+      ''');
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -681,7 +728,8 @@ class DbHelper {
         low_stock_threshold REAL NOT NULL DEFAULT 10.0,
         created_at TEXT NOT NULL,
         is_deleted INTEGER NOT NULL DEFAULT 0,
-        stock_group TEXT DEFAULT 'General'
+        stock_group TEXT DEFAULT 'General',
+        company_id TEXT NOT NULL DEFAULT 'company_default'
       )
     ''');
 
@@ -697,7 +745,8 @@ class DbHelper {
         opening_balance REAL NOT NULL DEFAULT 0.0,
         balance_type TEXT CHECK(balance_type IN ('DR', 'CR')) NOT NULL DEFAULT 'CR',
         created_at TEXT NOT NULL,
-        is_deleted INTEGER NOT NULL DEFAULT 0
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        company_id TEXT NOT NULL DEFAULT 'company_default'
       )
     ''');
 
@@ -717,6 +766,7 @@ class DbHelper {
         is_deleted INTEGER NOT NULL DEFAULT 0,
         edit_history TEXT,
         category TEXT CHECK(category IN ('SEED', 'FERTILISER')) NOT NULL,
+        company_id TEXT NOT NULL DEFAULT 'company_default',
         FOREIGN KEY(party_id) REFERENCES parties(id)
       )
     ''');
@@ -767,6 +817,7 @@ class DbHelper {
         is_deleted INTEGER NOT NULL DEFAULT 0,
         edit_history TEXT,
         category TEXT CHECK(category IN ('SEED', 'FERTILISER')) NOT NULL,
+        company_id TEXT NOT NULL DEFAULT 'company_default',
         FOREIGN KEY(party_id) REFERENCES parties(id)
       )
     ''');
@@ -815,6 +866,7 @@ class DbHelper {
         cheque_bank TEXT,
         cheque_date TEXT,
         cheque_status TEXT CHECK(cheque_status IN ('ISSUED','RECEIVED','PENDING','CLEARED','BOUNCED','CANCELLED')),
+        company_id TEXT NOT NULL DEFAULT 'company_default',
         FOREIGN KEY(party_id) REFERENCES parties(id)
       )
     ''');
@@ -884,7 +936,8 @@ class DbHelper {
         payment_method TEXT CHECK(payment_method IN ('CASH', 'BANK')) NOT NULL DEFAULT 'CASH',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        is_deleted INTEGER NOT NULL DEFAULT 0
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        company_id TEXT NOT NULL DEFAULT 'company_default'
       )
     ''');
 
@@ -1210,6 +1263,24 @@ class DbHelper {
     await db.execute('CREATE INDEX idx_vouchers_company_date ON vouchers(company_id, date)');
     await db.execute('CREATE INDEX idx_voucher_lines_voucher ON voucher_lines(voucher_id)');
     await db.execute('CREATE INDEX idx_stock_movements_item ON stock_movements(stock_item_id)');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS stock_balances (
+        item_id TEXT PRIMARY KEY,
+        qty REAL NOT NULL DEFAULT 0.0
+      )
+    ''');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_purchase_items_item_id ON purchase_items(item_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sale_items_item_id ON sale_items(item_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_company ON purchases(company_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_company ON sales(company_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_company ON payments(company_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_expenses_company ON expenses(company_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_parties_company ON parties(company_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_items_company ON items(company_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_is_deleted ON purchases(id, is_deleted)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_is_deleted ON sales(id, is_deleted)');
   }
 
   /// Close connection
