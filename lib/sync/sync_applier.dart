@@ -94,6 +94,20 @@ class SyncApplier {
       final purchaseMap = payload['purchase'] as Map<String, dynamic>;
       final items = payload['items'] as List<dynamic>? ?? [];
 
+      final Set<String> affectedItems = {};
+      final List<Map<String, dynamic>> oldItems = await db.query(
+        'purchase_items',
+        columns: ['item_id'],
+        where: 'purchase_id = ?',
+        whereArgs: [recordId],
+      );
+      for (final row in oldItems) {
+        affectedItems.add(row['item_id'] as String);
+      }
+      for (final item in items) {
+        affectedItems.add((item as Map)['item_id'] as String);
+      }
+
       // Delete old line items
       await db.delete(
         'purchase_items',
@@ -116,9 +130,28 @@ class SyncApplier {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
+
+      // Recalculate stock balances
+      for (final itemId in affectedItems) {
+        await _updateStockBalance(db, itemId);
+      }
     } else if (tableName == 'sales') {
       final saleMap = payload['sale'] as Map<String, dynamic>;
       final items = payload['items'] as List<dynamic>? ?? [];
+
+      final Set<String> affectedItems = {};
+      final List<Map<String, dynamic>> oldItems = await db.query(
+        'sale_items',
+        columns: ['item_id'],
+        where: 'sale_id = ?',
+        whereArgs: [recordId],
+      );
+      for (final row in oldItems) {
+        affectedItems.add(row['item_id'] as String);
+      }
+      for (final item in items) {
+        affectedItems.add((item as Map)['item_id'] as String);
+      }
 
       // Delete old line items
       await db.delete(
@@ -141,6 +174,11 @@ class SyncApplier {
           Map<String, dynamic>.from(item as Map),
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
+      }
+
+      // Recalculate stock balances
+      for (final itemId in affectedItems) {
+        await _updateStockBalance(db, itemId);
       }
     } else if (tableName == 'settings') {
       for (final entry in payload.entries) {
@@ -296,5 +334,34 @@ class SyncApplier {
       if (maps.isEmpty) return null;
       return maps.first;
     }
+  }
+
+  static Future<void> _updateStockBalance(Database db, String itemId) async {
+    final List<Map<String, dynamic>> purchaseRes = await db.rawQuery('''
+      SELECT COALESCE(SUM(pi.qty), 0.0) as total
+      FROM purchase_items pi
+      JOIN purchases p ON pi.purchase_id = p.id
+      WHERE pi.item_id = ? AND p.is_deleted = 0
+    ''', [itemId]);
+
+    final List<Map<String, dynamic>> saleRes = await db.rawQuery('''
+      SELECT COALESCE(SUM(si.qty), 0.0) as total
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      WHERE si.item_id = ? AND s.is_deleted = 0
+    ''', [itemId]);
+
+    final double totalPurchased = (purchaseRes.first['total'] as num).toDouble();
+    final double totalSold = (saleRes.first['total'] as num).toDouble();
+    final double stock = totalPurchased - totalSold;
+
+    await db.insert(
+      'stock_balances',
+      {
+        'item_id': itemId,
+        'qty': stock,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 }
