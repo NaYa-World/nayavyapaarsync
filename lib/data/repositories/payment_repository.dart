@@ -9,23 +9,24 @@ class PaymentRepository {
   final Uuid _uuid = const Uuid();
 
   /// Fetches all active payments
-  Future<List<Payment>> getPayments() async {
+  Future<List<Payment>> getPayments({String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'payments',
-      where: 'is_deleted = 0',
+      where: 'is_deleted = 0 AND company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'date DESC, created_at DESC',
     );
     return List.generate(maps.length, (i) => Payment.fromMap(maps[i]));
   }
 
   /// Fetches payments associated with a specific party
-  Future<List<Payment>> getPaymentsForParty(String partyId) async {
+  Future<List<Payment>> getPaymentsForParty(String partyId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'payments',
-      where: 'party_id = ? AND is_deleted = 0',
-      whereArgs: [partyId],
+      where: 'party_id = ? AND is_deleted = 0 AND company_id = ?',
+      whereArgs: [partyId, companyId],
       orderBy: 'date DESC, created_at DESC',
     );
     return List.generate(maps.length, (i) => Payment.fromMap(maps[i]));
@@ -44,10 +45,11 @@ class PaymentRepository {
   }
 
   /// Inserts a new payment transaction
-  Future<void> insertPayment(Payment payment, String deviceId) async {
+  Future<void> insertPayment(Payment payment, String deviceId, {String companyId = 'company_default'}) async {
     await FyGuard.checkDate(date: payment.date);
     final db = await _dbHelper.database;
     final map = payment.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.insert('payments', map);
@@ -78,13 +80,14 @@ class PaymentRepository {
   }
 
   /// Updates a payment transaction
-  Future<void> updatePayment(Payment payment, String deviceId) async {
+  Future<void> updatePayment(Payment payment, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final currentPayment = await getPayment(payment.id);
     if (currentPayment == null) return;
     await FyGuard.checkDate(date: currentPayment.date);
     await FyGuard.checkDate(date: payment.date);
     final map = payment.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.update(
