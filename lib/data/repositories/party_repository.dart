@@ -26,11 +26,12 @@ class PartyRepository {
   final Uuid _uuid = const Uuid();
 
   /// Fetches all parties that are not soft-deleted
-  Future<List<Party>> getParties() async {
+  Future<List<Party>> getParties({String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'parties',
-      where: 'is_deleted = 0',
+      where: 'is_deleted = 0 AND company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'name ASC',
     );
     return List.generate(maps.length, (i) => Party.fromMap(maps[i]));
@@ -49,9 +50,10 @@ class PartyRepository {
   }
 
   /// Inserts a new party, writes to AuditLog and SyncQueue in a txn
-  Future<void> insertParty(Party party, String deviceId) async {
+  Future<void> insertParty(Party party, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final map = party.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.insert('parties', map);
@@ -82,11 +84,12 @@ class PartyRepository {
   }
 
   /// Updates a party, writes to AuditLog and SyncQueue in a txn
-  Future<void> updateParty(Party party, String deviceId) async {
+  Future<void> updateParty(Party party, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final currentParty = await getParty(party.id);
     if (currentParty == null) return;
     final map = party.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.update(
@@ -164,30 +167,30 @@ class PartyRepository {
 
   /// Calculates outstanding balance for a party.
   /// Returns a map with 'balance' (double) and 'type' (DR/CR)
-  Future<Map<String, dynamic>> getOutstandingBalance(String partyId) async {
+  Future<Map<String, dynamic>> getOutstandingBalance(String partyId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final party = await getParty(partyId);
     if (party == null) return {'balance': 0.0, 'type': 'CR'};
 
     // 1. Purchases total (CR for supplier)
     final List<Map<String, dynamic>> purchaseRes = await db.rawQuery('''
-      SELECT COALESCE(SUM(grand_total), 0.0) as total FROM purchases WHERE party_id = ? AND is_deleted = 0
-    ''', [partyId]);
+      SELECT COALESCE(SUM(grand_total), 0.0) as total FROM purchases WHERE party_id = ? AND is_deleted = 0 AND company_id = ?
+    ''', [partyId, companyId]);
 
     // 2. Sales total (DR for customer)
     final List<Map<String, dynamic>> saleRes = await db.rawQuery('''
-      SELECT COALESCE(SUM(grand_total), 0.0) as total FROM sales WHERE party_id = ? AND is_deleted = 0
-    ''', [partyId]);
+      SELECT COALESCE(SUM(grand_total), 0.0) as total FROM sales WHERE party_id = ? AND is_deleted = 0 AND company_id = ?
+    ''', [partyId, companyId]);
 
     // 3. Payments made (direction 'PAID' -> DR for supplier)
     final List<Map<String, dynamic>> paidRes = await db.rawQuery('''
-      SELECT COALESCE(SUM(amount), 0.0) as total FROM payments WHERE party_id = ? AND direction = 'PAID' AND is_deleted = 0
-    ''', [partyId]);
+      SELECT COALESCE(SUM(amount), 0.0) as total FROM payments WHERE party_id = ? AND direction = 'PAID' AND is_deleted = 0 AND company_id = ?
+    ''', [partyId, companyId]);
 
     // 4. Payments received (direction 'RECEIVED' -> CR for customer)
     final List<Map<String, dynamic>> receivedRes = await db.rawQuery('''
-      SELECT COALESCE(SUM(amount), 0.0) as total FROM payments WHERE party_id = ? AND direction = 'RECEIVED' AND is_deleted = 0
-    ''', [partyId]);
+      SELECT COALESCE(SUM(amount), 0.0) as total FROM payments WHERE party_id = ? AND direction = 'RECEIVED' AND is_deleted = 0 AND company_id = ?
+    ''', [partyId, companyId]);
 
     final double purchasesVal = (purchaseRes.first['total'] as num).toDouble();
     final double salesVal = (saleRes.first['total'] as num).toDouble();
@@ -223,25 +226,25 @@ class PartyRepository {
 
   /// Builds a complete running ledger statement for a party.
   /// Returns a sorted list of LedgerRows
-  Future<List<LedgerRow>> getLedgerStatement(String partyId) async {
+  Future<List<LedgerRow>> getLedgerStatement(String partyId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final party = await getParty(partyId);
     if (party == null) return [];
 
     // Query purchases
     final List<Map<String, dynamic>> purchaseRows = await db.rawQuery('''
-      SELECT invoice_no, date, grand_total as amount FROM purchases WHERE party_id = ? AND is_deleted = 0
-    ''', [partyId]);
+      SELECT invoice_no, date, grand_total as amount FROM purchases WHERE party_id = ? AND is_deleted = 0 AND company_id = ?
+    ''', [partyId, companyId]);
 
     // Query sales
     final List<Map<String, dynamic>> saleRows = await db.rawQuery('''
-      SELECT invoice_no, date, grand_total as amount FROM sales WHERE party_id = ? AND is_deleted = 0
-    ''', [partyId]);
+      SELECT invoice_no, date, grand_total as amount FROM sales WHERE party_id = ? AND is_deleted = 0 AND company_id = ?
+    ''', [partyId, companyId]);
 
     // Query payments
     final List<Map<String, dynamic>> paymentRows = await db.rawQuery('''
-      SELECT direction, mode, reference_no, date, amount FROM payments WHERE party_id = ? AND is_deleted = 0
-    ''', [partyId]);
+      SELECT direction, mode, reference_no, date, amount FROM payments WHERE party_id = ? AND is_deleted = 0 AND company_id = ?
+    ''', [partyId, companyId]);
 
     final List<Map<String, dynamic>> ledgerEvents = [];
 
