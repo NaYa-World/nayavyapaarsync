@@ -6,6 +6,7 @@ import 'gdrive_service.dart';
 import '../data/repositories/backup_repository.dart';
 import '../data/models/backup_meta.dart';
 import '../data/database/db_helper.dart';
+import '../core/utils/encryption_helper.dart';
 
 class BackupService {
   static final BackupService _instance = BackupService._internal();
@@ -37,6 +38,9 @@ class BackupService {
     String? gdriveFileId;
     String status = 'FAILED';
 
+    final String tempEncBackupPath = join(await getDatabasesPath(), 'godown_backup_temp_enc.db');
+    final File tempEncBackupFile = File(tempEncBackupPath);
+
     try {
       final db = await DbHelper().database;
       try {
@@ -47,8 +51,14 @@ class BackupService {
         await dbFile.copy(tempBackupPath);
       }
 
-      // Perform the upload using the safe database snapshot
-      gdriveFileId = await _gdriveService.uploadBackup(tempBackupFile, fileName);
+      // Encrypt the temp backup file
+      if (await tempEncBackupFile.exists()) {
+        await tempEncBackupFile.delete();
+      }
+      await EncryptionHelper.encryptFile(tempBackupFile, tempEncBackupFile);
+
+      // Perform the upload using the encrypted database snapshot
+      gdriveFileId = await _gdriveService.uploadBackup(tempEncBackupFile, fileName);
       if (gdriveFileId != null) {
         status = 'SUCCESS';
       }
@@ -57,6 +67,9 @@ class BackupService {
     } finally {
       if (await tempBackupFile.exists()) {
         await tempBackupFile.delete();
+      }
+      if (await tempEncBackupFile.exists()) {
+        await tempEncBackupFile.delete();
       }
     }
 
@@ -167,12 +180,18 @@ class BackupService {
   Future<File?> downloadBackupForCherryPick(String gdriveFileId) async {
     try {
       final String tempDir = await getDatabasesPath();
-      final String tempPath = join(tempDir, 'temp_restore_${DateTime.now().millisecondsSinceEpoch}.db');
-      final File tempFile = File(tempPath);
+      final String tempEncPath = join(tempDir, 'temp_restore_enc_${DateTime.now().millisecondsSinceEpoch}.db');
+      final File tempEncFile = File(tempEncPath);
 
-      final bool success = await _gdriveService.downloadBackup(gdriveFileId, tempFile);
+      final bool success = await _gdriveService.downloadBackup(gdriveFileId, tempEncFile);
       if (success) {
-        return tempFile;
+        final String tempDecPath = join(tempDir, 'temp_restore_${DateTime.now().millisecondsSinceEpoch}.db');
+        final File tempDecFile = File(tempDecPath);
+        await EncryptionHelper.decryptFile(tempEncFile, tempDecFile);
+        if (await tempEncFile.exists()) {
+          await tempEncFile.delete();
+        }
+        return tempDecFile;
       }
       return null;
     } catch (_) {
