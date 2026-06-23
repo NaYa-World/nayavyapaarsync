@@ -23,12 +23,18 @@ class AuthService {
   /// Attempts to sign in the user silently (checks cached credentials)
   Future<GoogleSignInAccount?> signInSilently() async {
     try {
-      final account = await _googleSignIn.signInSilently();
+      var account = await _googleSignIn.signInSilently();
       if (account != null) {
-        // Attempt to force token refresh/check
-        final auth = await account.authentication;
+        var auth = await account.authentication;
         if (auth.accessToken == null) {
-          throw Exception('Token expired or invalid');
+          // Token might be expired. Force silent re-authentication to refresh token.
+          account = await _googleSignIn.signInSilently(reAuthenticate: true);
+          if (account != null) {
+            auth = await account.authentication;
+            if (auth.accessToken == null) {
+              throw Exception('Token refresh failed');
+            }
+          }
         }
       }
       return account;
