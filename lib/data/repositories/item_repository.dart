@@ -172,27 +172,14 @@ class ItemRepository {
   /// Computes the current stock on hand for a given item
   Future<double> getItemStock(String itemId) async {
     final db = await _dbHelper.database;
-
-    // Sum of purchases (active)
-    final List<Map<String, dynamic>> purchaseRes = await db.rawQuery('''
-      SELECT COALESCE(SUM(pi.qty), 0.0) as total
-      FROM purchase_items pi
-      JOIN purchases p ON pi.purchase_id = p.id
-      WHERE pi.item_id = ? AND p.is_deleted = 0
-    ''', [itemId]);
-
-    // Sum of sales (active)
-    final List<Map<String, dynamic>> saleRes = await db.rawQuery('''
-      SELECT COALESCE(SUM(si.qty), 0.0) as total
-      FROM sale_items si
-      JOIN sales s ON si.sale_id = s.id
-      WHERE si.item_id = ? AND s.is_deleted = 0
-    ''', [itemId]);
-
-    final double totalPurchased = (purchaseRes.first['total'] as num).toDouble();
-    final double totalSold = (saleRes.first['total'] as num).toDouble();
-
-    return totalPurchased - totalSold;
+    final List<Map<String, dynamic>> res = await db.query(
+      'stock_balances',
+      columns: ['qty'],
+      where: 'item_id = ?',
+      whereArgs: [itemId],
+    );
+    if (res.isEmpty) return 0.0;
+    return (res.first['qty'] as num).toDouble();
   }
 
   /// Gets the movement history (purchases and sales) for a specific item
