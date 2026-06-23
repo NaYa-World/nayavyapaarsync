@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
+import 'package:sqflite/sqflite.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/invoice_number.dart';
 import '../models/purchase.dart';
@@ -132,6 +133,11 @@ class PurchaseRepository {
         'created_at': DateTime.now().toIso8601String(),
         'status': 'PENDING',
       });
+
+      // Update Stock Balances
+      for (final item in items) {
+        await _updateStockBalance(txn, item.itemId);
+      }
     });
   }
 
@@ -214,6 +220,18 @@ class PurchaseRepository {
         'created_at': DateTime.now().toIso8601String(),
         'status': 'PENDING',
       });
+
+      // Update stock balances for old and new items
+      final Set<String> affectedItems = {};
+      for (final item in currentData.items) {
+        affectedItems.add(item.itemId);
+      }
+      for (final item in items) {
+        affectedItems.add(item.itemId);
+      }
+      for (final itemId in affectedItems) {
+        await _updateStockBalance(txn, itemId);
+      }
     });
   }
 
@@ -269,6 +287,40 @@ class PurchaseRepository {
         'created_at': DateTime.now().toIso8601String(),
         'status': 'PENDING',
       });
+
+      // Update stock balances for all items in the deleted purchase
+      for (final item in currentData.items) {
+        await _updateStockBalance(txn, item.itemId);
+      }
     });
+  }
+
+  Future<void> _updateStockBalance(Transaction txn, String itemId) async {
+    final List<Map<String, dynamic>> purchaseRes = await txn.rawQuery('''
+      SELECT COALESCE(SUM(pi.qty), 0.0) as total
+      FROM purchase_items pi
+      JOIN purchases p ON pi.purchase_id = p.id
+      WHERE pi.item_id = ? AND p.is_deleted = 0
+    ''', [itemId]);
+
+    final List<Map<String, dynamic>> saleRes = await txn.rawQuery('''
+      SELECT COALESCE(SUM(si.qty), 0.0) as total
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      WHERE si.item_id = ? AND s.is_deleted = 0
+    ''', [itemId]);
+
+    final double totalPurchased = (purchaseRes.first['total'] as num).toDouble();
+    final double totalSold = (saleRes.first['total'] as num).toDouble();
+    final double stock = totalPurchased - totalSold;
+
+    await txn.insert(
+      'stock_balances',
+      {
+        'item_id': itemId,
+        'qty': stock,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 }
