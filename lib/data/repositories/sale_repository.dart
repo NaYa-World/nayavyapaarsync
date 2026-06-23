@@ -18,11 +18,12 @@ class SaleRepository {
   final Uuid _uuid = const Uuid();
 
   /// Fetches all active sales (newest first)
-  Future<List<Sale>> getSales() async {
+  Future<List<Sale>> getSales({String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'sales',
-      where: 'is_deleted = 0',
+      where: 'is_deleted = 0 AND company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'date DESC, created_at DESC',
     );
     return List.generate(maps.length, (i) => Sale.fromMap(maps[i]));
@@ -55,7 +56,7 @@ class SaleRepository {
   }
 
   /// Generates the next sequential invoice number for sales
-  Future<String> getNextInvoiceNumber(DateTime date) async {
+  Future<String> getNextInvoiceNumber(DateTime date, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final String fy = AppDateUtils.getFinancialYear(date);
     final String prefix = 'SAL/$fy/';
@@ -63,8 +64,8 @@ class SaleRepository {
     // We check all invoices (even deleted ones) to ensure uniqueness
     final List<Map<String, dynamic>> result = await db.rawQuery('''
       SELECT invoice_no FROM sales
-      WHERE invoice_no LIKE ?
-    ''', ['$prefix%']);
+      WHERE invoice_no LIKE ? AND company_id = ?
+    ''', ['$prefix%', companyId]);
 
     int maxSequence = 0;
     for (final row in result) {
@@ -85,13 +86,14 @@ class SaleRepository {
     );
   }
 
-  Future<void> insertSale(Sale sale, List<SaleItem> items, String deviceId) async {
+  Future<void> insertSale(Sale sale, List<SaleItem> items, String deviceId, {String companyId = 'company_default'}) async {
     await FyGuard.checkDate(date: sale.date);
     final db = await _dbHelper.database;
 
     await db.transaction((txn) async {
       // 1. Insert Sale
       final saleMap = sale.toMap();
+      saleMap['company_id'] = companyId;
       await txn.insert('sales', saleMap);
 
       // 2. Insert line items
@@ -133,7 +135,7 @@ class SaleRepository {
   }
 
   /// Updates a sale transaction and logs its change history
-  Future<void> updateSale(Sale sale, List<SaleItem> items, String deviceId) async {
+  Future<void> updateSale(Sale sale, List<SaleItem> items, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     
     final currentData = await getSale(sale.id);
@@ -158,6 +160,7 @@ class SaleRepository {
 
     final updatedSale = sale.copyWith(editHistory: history, updatedAt: DateTime.now());
     final saleMap = updatedSale.toMap();
+    saleMap['company_id'] = companyId;
 
     await db.transaction((txn) async {
       // 1. Update sale row
