@@ -43,16 +43,17 @@ class ExpenseRepository {
       await txn.insert('expenses', map);
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'expenses',
-        'record_id': expense.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'expenses',
+        recordId: expense.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -86,16 +87,17 @@ class ExpenseRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'expenses',
-        'record_id': expense.id,
-        'action': 'EDIT',
-        'old_values': jsonEncode(currentExpense.toMap()),
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'expenses',
+        recordId: expense.id,
+        action: 'EDIT',
+        oldValues: jsonEncode(currentExpense.toMap()),
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -128,16 +130,17 @@ class ExpenseRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'expenses',
-        'record_id': id,
-        'action': 'DELETE',
-        'old_values': jsonEncode(currentExpense.toMap()),
-        'new_values': jsonEncode(updatedMap),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'expenses',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: jsonEncode(currentExpense.toMap()),
+        newValues: jsonEncode(updatedMap),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {

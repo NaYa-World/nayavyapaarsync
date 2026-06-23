@@ -24,16 +24,17 @@ class VoucherRepository {
         await txn.insert('voucher_lines', line.toMap());
       }
 
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'vouchers',
-        'record_id': voucher.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(payload),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'vouchers',
+        recordId: voucher.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(payload),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -68,16 +69,17 @@ class VoucherRepository {
         await txn.insert('voucher_lines', line.toMap());
       }
 
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'vouchers',
-        'record_id': voucher.id,
-        'action': 'EDIT',
-        'old_values': oldPayload != null ? jsonEncode(oldPayload) : null,
-        'new_values': jsonEncode(newPayload),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'vouchers',
+        recordId: voucher.id,
+        action: 'EDIT',
+        oldValues: oldPayload != null ? jsonEncode(oldPayload) : null,
+        newValues: jsonEncode(newPayload),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -105,16 +107,17 @@ class VoucherRepository {
         whereArgs: [id],
       );
 
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'vouchers',
-        'record_id': id,
-        'action': 'DELETE',
-        'old_values': oldPayload != null ? jsonEncode(oldPayload) : null,
-        'new_values': newPayload != null ? jsonEncode(newPayload) : null,
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'vouchers',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: oldPayload != null ? jsonEncode(oldPayload) : null,
+        newValues: newPayload != null ? jsonEncode(newPayload) : null,
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 

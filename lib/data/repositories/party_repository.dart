@@ -59,16 +59,17 @@ class PartyRepository {
       await txn.insert('parties', map);
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'parties',
-        'record_id': party.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'parties',
+        recordId: party.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -100,16 +101,17 @@ class PartyRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'parties',
-        'record_id': party.id,
-        'action': 'EDIT',
-        'old_values': jsonEncode(currentParty.toMap()),
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'parties',
+        recordId: party.id,
+        action: 'EDIT',
+        oldValues: jsonEncode(currentParty.toMap()),
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -141,16 +143,17 @@ class PartyRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'parties',
-        'record_id': id,
-        'action': 'DELETE',
-        'old_values': jsonEncode(currentParty.toMap()),
-        'new_values': jsonEncode(updatedMap),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'parties',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: jsonEncode(currentParty.toMap()),
+        newValues: jsonEncode(updatedMap),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {

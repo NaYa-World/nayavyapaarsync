@@ -37,16 +37,17 @@ class CompanyRepository {
         company.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'companies',
-        'record_id': company.id,
-        'action': existing == null ? 'CREATE' : 'EDIT',
-        'old_values': existing != null ? jsonEncode(existing.toMap()) : null,
-        'new_values': jsonEncode(company.toMap()),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'companies',
+        recordId: company.id,
+        action: existing == null ? 'CREATE' : 'EDIT',
+        oldValues: existing != null ? jsonEncode(existing.toMap()) : null,
+        newValues: jsonEncode(company.toMap()),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -59,16 +60,17 @@ class CompanyRepository {
         where: 'id = ?',
         whereArgs: [id],
       );
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'companies',
-        'record_id': id,
-        'action': 'DELETE',
-        'old_values': null,
-        'new_values': null,
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'companies',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: null,
+        newValues: null,
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -108,16 +110,17 @@ class CompanyRepository {
         fy.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'financial_years',
-        'record_id': fy.id,
-        'action': 'EDIT',
-        'old_values': null,
-        'new_values': jsonEncode(fy.toMap()),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'financial_years',
+        recordId: fy.id,
+        action: 'EDIT',
+        oldValues: null,
+        newValues: jsonEncode(fy.toMap()),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -137,20 +140,21 @@ class CompanyRepository {
         where: 'id = ?',
         whereArgs: [fyId],
       );
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'financial_years',
-        'record_id': fyId,
-        'action': 'EDIT',
-        'old_values': jsonEncode({'is_locked': 0}),
-        'new_values': jsonEncode({
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'financial_years',
+        recordId: fyId,
+        action: 'EDIT',
+        oldValues: jsonEncode({'is_locked': 0}),
+        newValues: jsonEncode({
           'is_locked': 1,
           'locked_by': lockedByUserId,
           'locked_at': now,
         }),
-        'timestamp': now,
-        'device_id': deviceId,
-      });
+        timestamp: now,
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -165,16 +169,17 @@ class CompanyRepository {
         where: 'id = ?',
         whereArgs: [fyId],
       );
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'financial_years',
-        'record_id': fyId,
-        'action': 'EDIT',
-        'old_values': jsonEncode({'is_locked': 1}),
-        'new_values': jsonEncode({'is_locked': 0}),
-        'timestamp': now,
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'financial_years',
+        recordId: fyId,
+        action: 'EDIT',
+        oldValues: jsonEncode({'is_locked': 1}),
+        newValues: jsonEncode({'is_locked': 0}),
+        timestamp: now,
+        deviceId: deviceId,
+      );
     });
   }
 }

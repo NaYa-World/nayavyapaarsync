@@ -111,16 +111,17 @@ class SaleRepository {
       };
 
       // 3. Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'sales',
-        'record_id': sale.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(payload),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'sales',
+        recordId: sale.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(payload),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // 4. Sync Queue
       await txn.insert('sync_queue', {
@@ -198,16 +199,17 @@ class SaleRepository {
       };
 
       // 4. Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'sales',
-        'record_id': sale.id,
-        'action': 'EDIT',
-        'old_values': jsonEncode(oldPayload),
-        'new_values': jsonEncode(newPayload),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'sales',
+        recordId: sale.id,
+        action: 'EDIT',
+        oldValues: jsonEncode(oldPayload),
+        newValues: jsonEncode(newPayload),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // 5. Sync Queue
       await txn.insert('sync_queue', {
@@ -265,16 +267,17 @@ class SaleRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'sales',
-        'record_id': id,
-        'action': 'DELETE',
-        'old_values': jsonEncode(oldPayload),
-        'new_values': jsonEncode(newPayload),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'sales',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: jsonEncode(oldPayload),
+        newValues: jsonEncode(newPayload),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {

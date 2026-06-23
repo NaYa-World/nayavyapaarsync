@@ -16,16 +16,17 @@ class BrsRepository {
     await db.transaction((txn) async {
       await txn.insert('bank_instruments', map);
 
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'bank_instruments',
-        'record_id': instrument.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'bank_instruments',
+        recordId: instrument.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -72,16 +73,17 @@ class BrsRepository {
         whereArgs: [instrumentId],
       );
 
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'bank_instruments',
-        'record_id': instrumentId,
-        'action': 'EDIT',
-        'old_values': oldMap != null ? jsonEncode(oldMap) : null,
-        'new_values': jsonEncode(newValues),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'bank_instruments',
+        recordId: instrumentId,
+        action: 'EDIT',
+        oldValues: oldMap != null ? jsonEncode(oldMap) : null,
+        newValues: jsonEncode(newValues),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -93,16 +95,17 @@ class BrsRepository {
     await db.transaction((txn) async {
       await txn.insert('bank_reconciliation', map);
 
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'bank_reconciliation',
-        'record_id': reconciliation.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'bank_reconciliation',
+        recordId: reconciliation.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 

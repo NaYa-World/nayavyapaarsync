@@ -55,16 +55,17 @@ class PaymentRepository {
       await txn.insert('payments', map);
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'payments',
-        'record_id': payment.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'payments',
+        recordId: payment.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -98,16 +99,17 @@ class PaymentRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'payments',
-        'record_id': payment.id,
-        'action': 'EDIT',
-        'old_values': jsonEncode(currentPayment.toMap()),
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'payments',
+        recordId: payment.id,
+        action: 'EDIT',
+        oldValues: jsonEncode(currentPayment.toMap()),
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -140,16 +142,17 @@ class PaymentRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'payments',
-        'record_id': id,
-        'action': 'DELETE',
-        'old_values': jsonEncode(currentPayment.toMap()),
-        'new_values': jsonEncode(updatedMap),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'payments',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: jsonEncode(currentPayment.toMap()),
+        newValues: jsonEncode(updatedMap),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
