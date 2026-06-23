@@ -30,11 +30,12 @@ class ItemRepository {
   final Uuid _uuid = const Uuid();
 
   /// Fetches all items that are not soft-deleted
-  Future<List<Item>> getItems() async {
+  Future<List<Item>> getItems({String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'items',
-      where: 'is_deleted = 0',
+      where: 'is_deleted = 0 AND company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'name ASC',
     );
     return List.generate(maps.length, (i) => Item.fromMap(maps[i]));
@@ -53,9 +54,10 @@ class ItemRepository {
   }
 
   /// Inserts a new item, writes to AuditLog and SyncQueue in a txn
-  Future<void> insertItem(Item item, String deviceId) async {
+  Future<void> insertItem(Item item, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final map = item.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.insert('items', map);
@@ -86,11 +88,12 @@ class ItemRepository {
   }
 
   /// Updates an item, writes to AuditLog and SyncQueue in a txn
-  Future<void> updateItem(Item item, String deviceId) async {
+  Future<void> updateItem(Item item, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final currentItem = await getItem(item.id);
     if (currentItem == null) return;
     final map = item.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.update(
@@ -193,7 +196,7 @@ class ItemRepository {
   }
 
   /// Gets the movement history (purchases and sales) for a specific item
-  Future<List<StockMovement>> getItemMovementHistory(String itemId) async {
+  Future<List<StockMovement>> getItemMovementHistory(String itemId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
 
     // Load purchases for the item
@@ -202,8 +205,8 @@ class ItemRepository {
       FROM purchase_items pi
       JOIN purchases p ON pi.purchase_id = p.id
       JOIN parties pt ON p.party_id = pt.id
-      WHERE pi.item_id = ? AND p.is_deleted = 0
-    ''', [itemId]);
+      WHERE pi.item_id = ? AND p.is_deleted = 0 AND p.company_id = ?
+    ''', [itemId, companyId]);
 
     // Load sales for the item
     final List<Map<String, dynamic>> saleRows = await db.rawQuery('''
@@ -211,8 +214,8 @@ class ItemRepository {
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id
       JOIN parties pt ON s.party_id = pt.id
-      WHERE si.item_id = ? AND s.is_deleted = 0
-    ''', [itemId]);
+      WHERE si.item_id = ? AND s.is_deleted = 0 AND s.company_id = ?
+    ''', [itemId, companyId]);
 
     // Combine and sort chronologically
     final List<Map<String, dynamic>> combined = [...purchaseRows, ...saleRows];
@@ -248,22 +251,22 @@ class ItemRepository {
 
   /// Evaluates running stock for an item and flags any sale transaction that causes negative stock.
   /// Returns a list of invoice numbers that are invalid (causes stock to go below zero).
-  Future<List<String>> checkNegativeStockIssues(String itemId) async {
+  Future<List<String>> checkNegativeStockIssues(String itemId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
 
     final List<Map<String, dynamic>> purchaseRows = await db.rawQuery('''
       SELECT p.invoice_no, 'PURCHASE' as type, p.date, pi.qty
       FROM purchase_items pi
       JOIN purchases p ON pi.purchase_id = p.id
-      WHERE pi.item_id = ? AND p.is_deleted = 0
-    ''', [itemId]);
+      WHERE pi.item_id = ? AND p.is_deleted = 0 AND p.company_id = ?
+    ''', [itemId, companyId]);
 
     final List<Map<String, dynamic>> saleRows = await db.rawQuery('''
       SELECT s.invoice_no, 'SALE' as type, s.date, si.qty
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id
-      WHERE si.item_id = ? AND s.is_deleted = 0
-    ''', [itemId]);
+      WHERE si.item_id = ? AND s.is_deleted = 0 AND s.company_id = ?
+    ''', [itemId, companyId]);
 
     final List<Map<String, dynamic>> combined = [...purchaseRows, ...saleRows];
     combined.sort((a, b) {
@@ -294,7 +297,7 @@ class ItemRepository {
   }
 
   /// Retrieves list of batches/lots for an item with stock and other details
-  Future<List<BatchStockDetails>> getAvailableBatchesForItem(String itemId, {String? excludeSaleId}) async {
+  Future<List<BatchStockDetails>> getAvailableBatchesForItem(String itemId, {String? excludeSaleId, String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
 
     final List<Map<String, dynamic>> rows = await db.rawQuery('''
@@ -310,20 +313,20 @@ class ItemRepository {
           SELECT COALESCE(SUM(p_item.qty), 0.0) 
           FROM purchase_items p_item 
           JOIN purchases p ON p_item.purchase_id = p.id 
-          WHERE p_item.item_id = pi.item_id AND p_item.lot_no = pi.lot_no AND p.is_deleted = 0
+          WHERE p_item.item_id = pi.item_id AND p_item.lot_no = pi.lot_no AND p.is_deleted = 0 AND p.company_id = ?
         ) as total_purchased,
         (
           SELECT COALESCE(SUM(s_item.qty), 0.0) 
           FROM sale_items s_item 
           JOIN sales s ON s_item.sale_id = s.id 
-          WHERE s_item.item_id = pi.item_id AND s_item.batch_no = pi.lot_no AND s.is_deleted = 0
+          WHERE s_item.item_id = pi.item_id AND s_item.batch_no = pi.lot_no AND s.is_deleted = 0 AND s.company_id = ?
           ${excludeSaleId != null ? 'AND s.id != ?' : ''}
         ) as total_sold
       FROM purchase_items pi
       JOIN purchases p ON pi.purchase_id = p.id
-      WHERE pi.item_id = ? AND p.is_deleted = 0
+      WHERE pi.item_id = ? AND p.is_deleted = 0 AND p.company_id = ?
       GROUP BY pi.lot_no
-    ''', excludeSaleId != null ? [excludeSaleId, itemId] : [itemId]);
+    ''', excludeSaleId != null ? [companyId, companyId, excludeSaleId, itemId, companyId] : [companyId, companyId, itemId, companyId]);
 
     final List<BatchStockDetails> batches = [];
     for (final row in rows) {
