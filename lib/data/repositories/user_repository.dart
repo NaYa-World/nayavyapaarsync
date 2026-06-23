@@ -89,20 +89,21 @@ class UserRepository {
     );
     await db.transaction((txn) async {
       await txn.insert('app_users', user.toMap());
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'app_users',
-        'record_id': user.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode({
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'app_users',
+        recordId: user.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode({
           'name': user.name,
           'role': user.role,
           'company_id': user.companyId,
         }),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
     return user;
   }
@@ -120,16 +121,17 @@ class UserRepository {
         where: 'id = ?',
         whereArgs: [userId],
       );
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'app_users',
-        'record_id': userId,
-        'action': 'EDIT',
-        'old_values': jsonEncode({'role': existing.role}),
-        'new_values': jsonEncode({'role': newRole}),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'app_users',
+        recordId: userId,
+        action: 'EDIT',
+        oldValues: jsonEncode({'role': existing.role}),
+        newValues: jsonEncode({'role': newRole}),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -149,16 +151,17 @@ class UserRepository {
         where: 'id = ?',
         whereArgs: [userId],
       );
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'app_users',
-        'record_id': userId,
-        'action': 'EDIT',
-        'old_values': jsonEncode({'pin_hash': '***'}),
-        'new_values': jsonEncode({'pin_hash': '***changed***'}),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'app_users',
+        recordId: userId,
+        action: 'EDIT',
+        oldValues: jsonEncode({'pin_hash': '***'}),
+        newValues: jsonEncode({'pin_hash': '***changed***'}),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 
@@ -172,16 +175,17 @@ class UserRepository {
         where: 'id = ?',
         whereArgs: [userId],
       );
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'app_users',
-        'record_id': userId,
-        'action': 'DELETE',
-        'old_values': null,
-        'new_values': null,
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'app_users',
+        recordId: userId,
+        action: 'DELETE',
+        oldValues: null,
+        newValues: null,
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
     });
   }
 }

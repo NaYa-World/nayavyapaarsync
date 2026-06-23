@@ -10,6 +10,7 @@ import 'auth_provider.dart';
 import 'backup_provider.dart';
 import 'item_provider.dart';
 import 'party_provider.dart';
+import 'double_entry_provider.dart';
 
 class TransactionState {
   final List<Purchase> purchases;
@@ -58,9 +59,12 @@ class TransactionNotifier extends StateNotifier<TransactionState> {
   Future<void> loadAllTransactions() async {
     state = state.copyWith(isLoading: true);
     try {
-      final purchases = await _purchaseRepo.getPurchases();
-      final sales = await _saleRepo.getSales();
-      final payments = await _paymentRepo.getPayments();
+      final company = _ref.read(activeCompanyProvider);
+      final companyId = company?.id ?? 'company_default';
+
+      final purchases = await _purchaseRepo.getPurchases(companyId: companyId);
+      final sales = await _saleRepo.getSales(companyId: companyId);
+      final payments = await _paymentRepo.getPayments(companyId: companyId);
 
       state = TransactionState(
         purchases: purchases,
@@ -97,7 +101,9 @@ class TransactionNotifier extends StateNotifier<TransactionState> {
 
   Future<void> addPurchase(Purchase purchase, List<PurchaseItem> items) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _purchaseRepo.insertPurchase(purchase, items, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _purchaseRepo.insertPurchase(purchase, items, deviceId, companyId: companyId);
     await loadAllTransactions();
     _refreshDependentStates();
     _triggerBackgroundSync();
@@ -105,7 +111,9 @@ class TransactionNotifier extends StateNotifier<TransactionState> {
 
   Future<void> editPurchase(Purchase purchase, List<PurchaseItem> items) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _purchaseRepo.updatePurchase(purchase, items, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _purchaseRepo.updatePurchase(purchase, items, deviceId, companyId: companyId);
     await loadAllTransactions();
     _refreshDependentStates();
     _triggerBackgroundSync();
@@ -123,7 +131,9 @@ class TransactionNotifier extends StateNotifier<TransactionState> {
 
   Future<void> addSale(Sale sale, List<SaleItem> items) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _saleRepo.insertSale(sale, items, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _saleRepo.insertSale(sale, items, deviceId, companyId: companyId);
     await loadAllTransactions();
     _refreshDependentStates();
     _triggerBackgroundSync();
@@ -131,7 +141,9 @@ class TransactionNotifier extends StateNotifier<TransactionState> {
 
   Future<void> editSale(Sale sale, List<SaleItem> items) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _saleRepo.updateSale(sale, items, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _saleRepo.updateSale(sale, items, deviceId, companyId: companyId);
     await loadAllTransactions();
     _refreshDependentStates();
     _triggerBackgroundSync();
@@ -149,7 +161,9 @@ class TransactionNotifier extends StateNotifier<TransactionState> {
 
   Future<void> addPayment(Payment payment) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _paymentRepo.insertPayment(payment, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _paymentRepo.insertPayment(payment, deviceId, companyId: companyId);
     await loadAllTransactions();
     _refreshDependentStates();
     _triggerBackgroundSync();
@@ -157,7 +171,9 @@ class TransactionNotifier extends StateNotifier<TransactionState> {
 
   Future<void> editPayment(Payment payment) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _paymentRepo.updatePayment(payment, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _paymentRepo.updatePayment(payment, deviceId, companyId: companyId);
     await loadAllTransactions();
     _refreshDependentStates();
     _triggerBackgroundSync();
@@ -176,5 +192,6 @@ final transactionProvider = StateNotifierProvider<TransactionNotifier, Transacti
   final pRepo = ref.watch(purchaseRepositoryProvider);
   final sRepo = ref.watch(saleRepositoryProvider);
   final payRepo = ref.watch(paymentRepositoryProvider);
+  ref.watch(activeCompanyProvider);
   return TransactionNotifier(pRepo, sRepo, payRepo, ref);
 });

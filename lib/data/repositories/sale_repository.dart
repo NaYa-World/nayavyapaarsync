@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
+import 'package:sqflite/sqflite.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/invoice_number.dart';
 import '../models/sale.dart';
@@ -18,11 +19,12 @@ class SaleRepository {
   final Uuid _uuid = const Uuid();
 
   /// Fetches all active sales (newest first)
-  Future<List<Sale>> getSales() async {
+  Future<List<Sale>> getSales({String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'sales',
-      where: 'is_deleted = 0',
+      where: 'is_deleted = 0 AND company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'date DESC, created_at DESC',
     );
     return List.generate(maps.length, (i) => Sale.fromMap(maps[i]));
@@ -55,7 +57,7 @@ class SaleRepository {
   }
 
   /// Generates the next sequential invoice number for sales
-  Future<String> getNextInvoiceNumber(DateTime date) async {
+  Future<String> getNextInvoiceNumber(DateTime date, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final String fy = AppDateUtils.getFinancialYear(date);
     final String prefix = 'SAL/$fy/';
@@ -63,8 +65,8 @@ class SaleRepository {
     // We check all invoices (even deleted ones) to ensure uniqueness
     final List<Map<String, dynamic>> result = await db.rawQuery('''
       SELECT invoice_no FROM sales
-      WHERE invoice_no LIKE ?
-    ''', ['$prefix%']);
+      WHERE invoice_no LIKE ? AND company_id = ?
+    ''', ['$prefix%', companyId]);
 
     int maxSequence = 0;
     for (final row in result) {
@@ -85,13 +87,14 @@ class SaleRepository {
     );
   }
 
-  Future<void> insertSale(Sale sale, List<SaleItem> items, String deviceId) async {
+  Future<void> insertSale(Sale sale, List<SaleItem> items, String deviceId, {String companyId = 'company_default'}) async {
     await FyGuard.checkDate(date: sale.date);
     final db = await _dbHelper.database;
 
     await db.transaction((txn) async {
       // 1. Insert Sale
       final saleMap = sale.toMap();
+      saleMap['company_id'] = companyId;
       await txn.insert('sales', saleMap);
 
       // 2. Insert line items
@@ -108,16 +111,17 @@ class SaleRepository {
       };
 
       // 3. Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'sales',
-        'record_id': sale.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(payload),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'sales',
+        recordId: sale.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(payload),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // 4. Sync Queue
       await txn.insert('sync_queue', {
@@ -129,11 +133,16 @@ class SaleRepository {
         'created_at': DateTime.now().toIso8601String(),
         'status': 'PENDING',
       });
+
+      // Update Stock Balances
+      for (final item in items) {
+        await _updateStockBalance(txn, item.itemId);
+      }
     });
   }
 
   /// Updates a sale transaction and logs its change history
-  Future<void> updateSale(Sale sale, List<SaleItem> items, String deviceId) async {
+  Future<void> updateSale(Sale sale, List<SaleItem> items, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     
     final currentData = await getSale(sale.id);
@@ -158,6 +167,7 @@ class SaleRepository {
 
     final updatedSale = sale.copyWith(editHistory: history, updatedAt: DateTime.now());
     final saleMap = updatedSale.toMap();
+    saleMap['company_id'] = companyId;
 
     await db.transaction((txn) async {
       // 1. Update sale row
@@ -189,16 +199,17 @@ class SaleRepository {
       };
 
       // 4. Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'sales',
-        'record_id': sale.id,
-        'action': 'EDIT',
-        'old_values': jsonEncode(oldPayload),
-        'new_values': jsonEncode(newPayload),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'sales',
+        recordId: sale.id,
+        action: 'EDIT',
+        oldValues: jsonEncode(oldPayload),
+        newValues: jsonEncode(newPayload),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // 5. Sync Queue
       await txn.insert('sync_queue', {
@@ -210,6 +221,18 @@ class SaleRepository {
         'created_at': DateTime.now().toIso8601String(),
         'status': 'PENDING',
       });
+
+      // Update stock balances for old and new items
+      final Set<String> affectedItems = {};
+      for (final item in currentData.items) {
+        affectedItems.add(item.itemId);
+      }
+      for (final item in items) {
+        affectedItems.add(item.itemId);
+      }
+      for (final itemId in affectedItems) {
+        await _updateStockBalance(txn, itemId);
+      }
     });
   }
 
@@ -244,16 +267,17 @@ class SaleRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'sales',
-        'record_id': id,
-        'action': 'DELETE',
-        'old_values': jsonEncode(oldPayload),
-        'new_values': jsonEncode(newPayload),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'sales',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: jsonEncode(oldPayload),
+        newValues: jsonEncode(newPayload),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -265,6 +289,40 @@ class SaleRepository {
         'created_at': DateTime.now().toIso8601String(),
         'status': 'PENDING',
       });
+
+      // Update stock balances for all items in the deleted sale
+      for (final item in currentData.items) {
+        await _updateStockBalance(txn, item.itemId);
+      }
     });
+  }
+
+  Future<void> _updateStockBalance(Transaction txn, String itemId) async {
+    final List<Map<String, dynamic>> purchaseRes = await txn.rawQuery('''
+      SELECT COALESCE(SUM(pi.qty), 0.0) as total
+      FROM purchase_items pi
+      JOIN purchases p ON pi.purchase_id = p.id
+      WHERE pi.item_id = ? AND p.is_deleted = 0
+    ''', [itemId]);
+
+    final List<Map<String, dynamic>> saleRes = await txn.rawQuery('''
+      SELECT COALESCE(SUM(si.qty), 0.0) as total
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      WHERE si.item_id = ? AND s.is_deleted = 0
+    ''', [itemId]);
+
+    final double totalPurchased = (purchaseRes.first['total'] as num).toDouble();
+    final double totalSold = (saleRes.first['total'] as num).toDouble();
+    final double stock = totalPurchased - totalSold;
+
+    await txn.insert(
+      'stock_balances',
+      {
+        'item_id': itemId,
+        'qty': stock,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 }

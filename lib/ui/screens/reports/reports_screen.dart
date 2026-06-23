@@ -176,84 +176,72 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   // ================= DAY BOOK =================
 
   Widget _buildDayBookReport(ThemeData theme) {
-    final transactionState = ref.watch(transactionProvider);
-    final parties = ref.watch(partyProvider).value ?? [];
-
-    final List<Map<String, dynamic>> items = [];
-
-    // Filter sales in range
-    for (final sale in transactionState.sales) {
-      if (sale.date.isAfter(_startDate.subtract(const Duration(seconds: 1))) &&
-          sale.date.isBefore(_endDate.add(const Duration(days: 1)))) {
-        final partyName = parties.firstWhere((p) => p.party.id == sale.partyId, orElse: () => _mockParty()).party.name;
-        items.add({
-          'date': sale.date,
-          'type': 'SALE',
-          'particulars': 'Sale: $partyName (Inv: ${sale.invoiceNo})',
-          'debit': sale.grandTotal, // debited customer account
-          'credit': 0.0,
-        });
-      }
+    final company = ref.watch(activeCompanyProvider);
+    final fy = ref.watch(activeFinancialYearProvider);
+    if (company == null || fy == null) {
+      return const Center(child: Text('Please select a company and financial year'));
     }
 
-    // Filter purchases in range
-    for (final purchase in transactionState.purchases) {
-      if (purchase.date.isAfter(_startDate.subtract(const Duration(seconds: 1))) &&
-          purchase.date.isBefore(_endDate.add(const Duration(days: 1)))) {
-        final partyName = parties.firstWhere((p) => p.party.id == purchase.partyId, orElse: () => _mockParty()).party.name;
-        items.add({
-          'date': purchase.date,
-          'type': 'PURCHASE',
-          'particulars': 'Purchase: $partyName (Inv: ${purchase.invoiceNo})',
-          'debit': 0.0,
-          'credit': purchase.grandTotal, // credited supplier account
-        });
-      }
-    }
+    final reportsEngine = ref.read(reportsEngineProvider);
 
-    // Filter payments in range
-    for (final payment in transactionState.payments) {
-      if (payment.date.isAfter(_startDate.subtract(const Duration(seconds: 1))) &&
-          payment.date.isBefore(_endDate.add(const Duration(days: 1)))) {
-        final partyName = parties.firstWhere((p) => p.party.id == payment.partyId, orElse: () => _mockParty()).party.name;
-        final isReceived = payment.direction == 'RECEIVED';
-        items.add({
-          'date': payment.date,
-          'type': isReceived ? 'RECEIPT' : 'PAYMENT',
-          'particulars': 'Payment ${isReceived ? 'Received' : 'Paid'} [$partyName] (${payment.mode})',
-          'debit': isReceived ? payment.amount : 0.0,
-          'credit': isReceived ? 0.0 : payment.amount,
-        });
-      }
-    }
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: reportsEngine.getDoubleEntryDayBook(company.id, fy.id, startDate: _startDate, endDate: _endDate),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
 
-    // Sort oldest to newest for chronological flow
-    items.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+        final List<Map<String, dynamic>> vouchers = snapshot.data ?? [];
+        final List<Map<String, dynamic>> items = [];
 
-    double totalDebit = 0.0;
-    double totalCredit = 0.0;
-    for (final row in items) {
-      totalDebit += row['debit'];
-      totalCredit += row['credit'];
-    }
+        for (final v in vouchers) {
+          final List<dynamic> lines = v['lines'] as List<dynamic>;
+          for (final line in lines) {
+            final double dr = line['dr_amount'] as double;
+            final double cr = line['cr_amount'] as double;
+            final String ledgerName = line['ledger_name'] as String;
 
-    return _buildPreviewTable(
-      title: 'Day Book Report',
-      headers: ['Date', 'Particulars', 'Debit (Dr)', 'Credit (Cr)'],
-      dataRows: items.map((r) {
-        return [
-          _dateFormatter.format(r['date'] as DateTime),
-          r['particulars'] as String,
-          r['debit'] > 0 ? IndianFormatUtils.formatCurrency(r['debit'] as double) : '-',
-          r['credit'] > 0 ? IndianFormatUtils.formatCurrency(r['credit'] as double) : '-',
-        ];
-      }).toList(),
-      totalsRow: [
-        'Total',
-        'Summary',
-        IndianFormatUtils.formatCurrency(totalDebit),
-        IndianFormatUtils.formatCurrency(totalCredit),
-      ],
+            items.add({
+              'date': v['date'] as DateTime,
+              'particulars': '$ledgerName (${v['type']}: ${v['voucher_no']})',
+              'debit': dr,
+              'credit': cr,
+            });
+          }
+        }
+
+        // Sort oldest to newest for chronological flow
+        items.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+        double totalDebit = 0.0;
+        double totalCredit = 0.0;
+        for (final row in items) {
+          totalDebit += row['debit'];
+          totalCredit += row['credit'];
+        }
+
+        return _buildPreviewTable(
+          title: 'Day Book Report',
+          headers: ['Date', 'Particulars', 'Debit (Dr)', 'Credit (Cr)'],
+          dataRows: items.map((r) {
+            return [
+              _dateFormatter.format(r['date'] as DateTime),
+              r['particulars'] as String,
+              r['debit'] > 0 ? IndianFormatUtils.formatCurrency(r['debit'] as double) : '-',
+              r['credit'] > 0 ? IndianFormatUtils.formatCurrency(r['credit'] as double) : '-',
+            ];
+          }).toList(),
+          totalsRow: [
+            'Total',
+            'Summary',
+            IndianFormatUtils.formatCurrency(totalDebit),
+            IndianFormatUtils.formatCurrency(totalCredit),
+          ],
+        );
+      },
     );
   }
 

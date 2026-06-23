@@ -48,7 +48,7 @@ class _AppRootNavigatorState extends ConsumerState<AppRootNavigator> with Widget
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused) {
       ref.read(securityProvider.notifier).setLocked(true);
     }
   }

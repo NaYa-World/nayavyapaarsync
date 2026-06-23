@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/party.dart';
 import '../data/repositories/party_repository.dart';
 import 'auth_provider.dart';
+import 'double_entry_provider.dart';
 
 class PartyWithBalance {
   final Party party;
@@ -31,11 +32,14 @@ class PartyNotifier extends StateNotifier<AsyncValue<List<PartyWithBalance>>> {
   Future<void> loadParties() async {
     state = const AsyncValue.loading();
     try {
-      final parties = await _repository.getParties();
+      final company = _ref.read(activeCompanyProvider);
+      final companyId = company?.id ?? 'company_default';
+
+      final parties = await _repository.getParties(companyId: companyId);
       final List<PartyWithBalance> partiesWithBalance = [];
 
       for (final party in parties) {
-        final balanceInfo = await _repository.getOutstandingBalance(party.id);
+        final balanceInfo = await _repository.getOutstandingBalance(party.id, companyId: companyId);
         partiesWithBalance.add(PartyWithBalance(
           party: party,
           outstandingBalance: balanceInfo['balance'] as double,
@@ -52,14 +56,18 @@ class PartyNotifier extends StateNotifier<AsyncValue<List<PartyWithBalance>>> {
   /// Adds a new party and refreshes the list
   Future<void> addParty(Party party) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _repository.insertParty(party, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _repository.insertParty(party, deviceId, companyId: companyId);
     await loadParties();
   }
 
   /// Edits an existing party and refreshes the list
   Future<void> editParty(Party party) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _repository.updateParty(party, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _repository.updateParty(party, deviceId, companyId: companyId);
     await loadParties();
   }
 
@@ -73,6 +81,7 @@ class PartyNotifier extends StateNotifier<AsyncValue<List<PartyWithBalance>>> {
 
 final partyProvider = StateNotifierProvider<PartyNotifier, AsyncValue<List<PartyWithBalance>>>((ref) {
   final repository = ref.watch(partyRepositoryProvider);
+  ref.watch(activeCompanyProvider);
   return PartyNotifier(repository, ref);
 });
 

@@ -9,11 +9,12 @@ class ExpenseRepository {
   final Uuid _uuid = const Uuid();
 
   /// Fetches all active expenses
-  Future<List<Expense>> getExpenses() async {
+  Future<List<Expense>> getExpenses({String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'expenses',
-      where: 'is_deleted = 0',
+      where: 'is_deleted = 0 AND company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'date DESC',
     );
     return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
@@ -32,25 +33,27 @@ class ExpenseRepository {
   }
 
   /// Inserts a new expense, writes to AuditLog and SyncQueue in a txn
-  Future<void> insertExpense(Expense expense, String deviceId) async {
+  Future<void> insertExpense(Expense expense, String deviceId, {String companyId = 'company_default'}) async {
     await FyGuard.checkDate(date: expense.date);
     final db = await _dbHelper.database;
     final map = expense.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.insert('expenses', map);
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'expenses',
-        'record_id': expense.id,
-        'action': 'CREATE',
-        'old_values': null,
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'expenses',
+        recordId: expense.id,
+        action: 'CREATE',
+        oldValues: null,
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -66,13 +69,14 @@ class ExpenseRepository {
   }
 
   /// Updates an expense, writes to AuditLog and SyncQueue in a txn
-  Future<void> updateExpense(Expense expense, String deviceId) async {
+  Future<void> updateExpense(Expense expense, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final currentExpense = await getExpense(expense.id);
     if (currentExpense == null) return;
     await FyGuard.checkDate(date: currentExpense.date);
     await FyGuard.checkDate(date: expense.date);
     final map = expense.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.update(
@@ -83,16 +87,17 @@ class ExpenseRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'expenses',
-        'record_id': expense.id,
-        'action': 'EDIT',
-        'old_values': jsonEncode(currentExpense.toMap()),
-        'new_values': jsonEncode(map),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'expenses',
+        recordId: expense.id,
+        action: 'EDIT',
+        oldValues: jsonEncode(currentExpense.toMap()),
+        newValues: jsonEncode(map),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {
@@ -125,16 +130,17 @@ class ExpenseRepository {
       );
 
       // Audit Log
-      await txn.insert('audit_logs', {
-        'id': _uuid.v4(),
-        'table_name': 'expenses',
-        'record_id': id,
-        'action': 'DELETE',
-        'old_values': jsonEncode(currentExpense.toMap()),
-        'new_values': jsonEncode(updatedMap),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: _uuid.v4(),
+        tableName: 'expenses',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: jsonEncode(currentExpense.toMap()),
+        newValues: jsonEncode(updatedMap),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // Sync Queue
       await txn.insert('sync_queue', {

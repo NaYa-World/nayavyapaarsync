@@ -35,16 +35,17 @@ class SettingsRepository {
 
       // 1. Audit Log record
       final String auditId = _uuid.v4();
-      await txn.insert('audit_logs', {
-        'id': auditId,
-        'table_name': 'settings',
-        'record_id': 'app_settings',
-        'action': 'EDIT',
-        'old_values': currentSettings.isValid ? jsonEncode(currentSettings.toMap()) : null,
-        'new_values': jsonEncode(newMap),
-        'timestamp': DateTime.now().toIso8601String(),
-        'device_id': deviceId,
-      });
+      await _dbHelper.insertAuditLog(
+        txn,
+        id: auditId,
+        tableName: 'settings',
+        recordId: 'app_settings',
+        action: 'EDIT',
+        oldValues: currentSettings.isValid ? jsonEncode(currentSettings.toMap()) : null,
+        newValues: jsonEncode(newMap),
+        timestamp: DateTime.now().toIso8601String(),
+        deviceId: deviceId,
+      );
 
       // 2. Sync Queue record
       final String syncId = _uuid.v4();
