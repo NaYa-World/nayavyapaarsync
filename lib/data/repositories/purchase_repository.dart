@@ -18,11 +18,12 @@ class PurchaseRepository {
   final Uuid _uuid = const Uuid();
 
   /// Fetches all active purchases (newest first)
-  Future<List<Purchase>> getPurchases() async {
+  Future<List<Purchase>> getPurchases({String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'purchases',
-      where: 'is_deleted = 0',
+      where: 'is_deleted = 0 AND company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'date DESC, created_at DESC',
     );
     return List.generate(maps.length, (i) => Purchase.fromMap(maps[i]));
@@ -55,7 +56,7 @@ class PurchaseRepository {
   }
 
   /// Generates the next sequential invoice number for purchases
-  Future<String> getNextInvoiceNumber(DateTime date) async {
+  Future<String> getNextInvoiceNumber(DateTime date, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final String fy = AppDateUtils.getFinancialYear(date);
     final String prefix = 'PUR/$fy/';
@@ -63,8 +64,8 @@ class PurchaseRepository {
     // We check all invoices (even deleted ones) to ensure uniqueness
     final List<Map<String, dynamic>> result = await db.rawQuery('''
       SELECT invoice_no FROM purchases
-      WHERE invoice_no LIKE ?
-    ''', ['$prefix%']);
+      WHERE invoice_no LIKE ? AND company_id = ?
+    ''', ['$prefix%', companyId]);
 
     int maxSequence = 0;
     for (final row in result) {
@@ -86,13 +87,14 @@ class PurchaseRepository {
   }
 
   /// Inserts a new purchase transaction
-  Future<void> insertPurchase(Purchase purchase, List<PurchaseItem> items, String deviceId) async {
+  Future<void> insertPurchase(Purchase purchase, List<PurchaseItem> items, String deviceId, {String companyId = 'company_default'}) async {
     await FyGuard.checkDate(date: purchase.date);
     final db = await _dbHelper.database;
 
     await db.transaction((txn) async {
       // 1. Insert Purchase
       final purchaseMap = purchase.toMap();
+      purchaseMap['company_id'] = companyId;
       await txn.insert('purchases', purchaseMap);
 
       // 2. Insert line items
@@ -134,7 +136,7 @@ class PurchaseRepository {
   }
 
   /// Updates a purchase transaction and logs its change history
-  Future<void> updatePurchase(Purchase purchase, List<PurchaseItem> items, String deviceId) async {
+  Future<void> updatePurchase(Purchase purchase, List<PurchaseItem> items, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     
     final currentData = await getPurchase(purchase.id);
@@ -159,6 +161,7 @@ class PurchaseRepository {
 
     final updatedPurchase = purchase.copyWith(editHistory: history, updatedAt: DateTime.now());
     final purchaseMap = updatedPurchase.toMap();
+    purchaseMap['company_id'] = companyId;
 
     await db.transaction((txn) async {
       // 1. Update purchase row
