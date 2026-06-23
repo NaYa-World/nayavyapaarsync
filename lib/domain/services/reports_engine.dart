@@ -252,4 +252,57 @@ class ReportsEngine {
       'latest_reconciliation': latestReconciliation,
     };
   }
+
+  /// Fetches double-entry vouchers with their ledger postings (debits/credits) for the Day Book report
+  Future<List<Map<String, dynamic>>> getDoubleEntryDayBook(String companyId, String fyId, {DateTime? startDate, DateTime? endDate}) async {
+    final db = await _dbHelper.database;
+    
+    String whereClause = 'v.company_id = ? AND v.fy_id = ? AND v.is_deleted = 0';
+    List<dynamic> whereArgs = [companyId, fyId];
+    
+    if (startDate != null) {
+      whereClause += ' AND v.date >= ?';
+      whereArgs.add(startDate.toIso8601String().substring(0, 10));
+    }
+    if (endDate != null) {
+      whereClause += ' AND v.date <= ?';
+      whereArgs.add(endDate.toIso8601String().substring(0, 10));
+    }
+    
+    final List<Map<String, dynamic>> voucherRows = await db.rawQuery('''
+      SELECT v.id, v.voucher_no, v.type, v.date, v.narration
+      FROM vouchers v
+      WHERE $whereClause
+      ORDER BY v.date DESC, v.created_at DESC
+    ''', whereArgs);
+    
+    final List<Map<String, dynamic>> result = [];
+    
+    for (final vRow in voucherRows) {
+      final String voucherId = vRow['id'] as String;
+      
+      final List<Map<String, dynamic>> lineRows = await db.rawQuery('''
+        SELECT l.name as ledger_name, vl.dr_amount, vl.cr_amount, vl.narration
+        FROM voucher_lines vl
+        JOIN ledgers l ON vl.ledger_id = l.id
+        WHERE vl.voucher_id = ?
+      ''', [voucherId]);
+      
+      result.add({
+        'id': voucherId,
+        'voucher_no': vRow['voucher_no'],
+        'type': vRow['type'],
+        'date': DateTime.parse(vRow['date'] as String),
+        'narration': vRow['narration'],
+        'lines': lineRows.map((row) => {
+          'ledger_name': row['ledger_name'],
+          'dr_amount': (row['dr_amount'] as num).toDouble(),
+          'cr_amount': (row['cr_amount'] as num).toDouble(),
+          'narration': row['narration'],
+        }).toList(),
+      });
+    }
+    
+    return result;
+  }
 }
