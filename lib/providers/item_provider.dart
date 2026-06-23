@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/item.dart';
 import '../data/repositories/item_repository.dart';
 import 'auth_provider.dart';
+import 'double_entry_provider.dart';
 
 class ItemWithStock {
   final Item item;
@@ -35,7 +36,10 @@ class ItemNotifier extends StateNotifier<AsyncValue<List<ItemWithStock>>> {
   Future<void> loadItems() async {
     state = const AsyncValue.loading();
     try {
-      final items = await _repository.getItems();
+      final company = _ref.read(activeCompanyProvider);
+      final companyId = company?.id ?? 'company_default';
+
+      final items = await _repository.getItems(companyId: companyId);
       final List<ItemWithStock> itemsWithStock = [];
       
       for (final item in items) {
@@ -52,14 +56,18 @@ class ItemNotifier extends StateNotifier<AsyncValue<List<ItemWithStock>>> {
   /// Adds a new item and refreshes the list
   Future<void> addItem(Item item) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _repository.insertItem(item, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _repository.insertItem(item, deviceId, companyId: companyId);
     await loadItems();
   }
 
   /// Edits an existing item and refreshes the list
   Future<void> editItem(Item item) async {
     final deviceId = _ref.read(authProvider).deviceId;
-    await _repository.updateItem(item, deviceId);
+    final company = _ref.read(activeCompanyProvider);
+    final companyId = company?.id ?? 'company_default';
+    await _repository.updateItem(item, deviceId, companyId: companyId);
     await loadItems();
   }
 
@@ -73,6 +81,7 @@ class ItemNotifier extends StateNotifier<AsyncValue<List<ItemWithStock>>> {
 
 final itemProvider = StateNotifierProvider<ItemNotifier, AsyncValue<List<ItemWithStock>>>((ref) {
   final repository = ref.watch(itemRepositoryProvider);
+  ref.watch(activeCompanyProvider);
   return ItemNotifier(repository, ref);
 });
 
