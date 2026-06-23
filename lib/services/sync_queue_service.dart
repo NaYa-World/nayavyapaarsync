@@ -13,6 +13,7 @@ import '../sync/snapshot_coordinator.dart';
 import '../sync/log_pruner.dart';
 import '../sync/sync_applier.dart';
 import 'gdrive_service.dart';
+import '../core/utils/encryption_helper.dart';
 
 class SyncQueueService {
   static final SyncQueueService _instance = SyncQueueService._internal();
@@ -132,9 +133,23 @@ class SyncQueueService {
         final String dbPath = join(await getDatabasesPath(), 'godown_management.db');
         final File localDbFile = File(dbPath);
 
-        final success = await GDriveService().downloadBackup(snapshotMeta.id, localDbFile);
+        final String tempEncPath = join(await getDatabasesPath(), 'temp_restore_snap_enc.db');
+        final File tempEncFile = File(tempEncPath);
+        if (await tempEncFile.exists()) {
+          await tempEncFile.delete();
+        }
+
+        final success = await GDriveService().downloadBackup(snapshotMeta.id, tempEncFile);
         if (!success) {
+          if (await tempEncFile.exists()) {
+            await tempEncFile.delete();
+          }
           throw Exception('Failed to download snapshot file');
+        }
+
+        await EncryptionHelper.decryptFile(tempEncFile, localDbFile);
+        if (await tempEncFile.exists()) {
+          await tempEncFile.delete();
         }
 
         watermark = manifest.latestSnapshot!.watermarkTimestamp;
@@ -320,8 +335,18 @@ class SyncQueueService {
       final day = now.day.toString().padLeft(2, '0');
       final snapshotFileName = 'godown_snapshot_$year-$month-${day}_T$secondsSinceEpoch.db';
 
+      final String tempSnapPath = join(await getDatabasesPath(), 'temp_snap.db');
+      final File tempSnapFile = File(tempSnapPath);
+      if (await tempSnapFile.exists()) {
+        await tempSnapFile.delete();
+      }
+      await EncryptionHelper.encryptFile(dbFile, tempSnapFile);
+
       // Perform GDrive upload
-      final snapshotId = await GDriveService().uploadSnapshot(dbFile, snapshotFileName);
+      final snapshotId = await GDriveService().uploadSnapshot(tempSnapFile, snapshotFileName);
+      if (await tempSnapFile.exists()) {
+        await tempSnapFile.delete();
+      }
       if (snapshotId == null) return;
 
       // Find the maximum lastSyncedLogTimestamp across all devices in the registry
