@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -22,7 +24,7 @@ class DbHelper {
     final String path = join(await getDatabasesPath(), 'godown_management.db');
     return await openDatabase(
       path,
-      version: 14,
+      version: 15,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -745,6 +747,53 @@ class DbHelper {
         ''');
       }
     }
+
+    if (oldVersion < 15) {
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_logs'"
+      );
+      if (tables.isNotEmpty) {
+        final columns = await db.rawQuery("PRAGMA table_info(audit_logs)");
+        final existingCols = columns.map((r) => r['name'] as String).toSet();
+        if (!existingCols.contains('hash')) {
+          await db.execute("ALTER TABLE audit_logs ADD COLUMN hash TEXT");
+        }
+        if (!existingCols.contains('prev_hash')) {
+          await db.execute("ALTER TABLE audit_logs ADD COLUMN prev_hash TEXT");
+        }
+
+        final List<Map<String, dynamic>> logs = await db.query(
+          'audit_logs',
+          orderBy: 'timestamp ASC, id ASC',
+        );
+
+        String prevHash = '0000000000000000000000000000000000000000000000000000000000000000';
+        for (final log in logs) {
+          final String id = log['id'] as String;
+          final String tableName = log['table_name'] as String;
+          final String recordId = log['record_id'] as String;
+          final String action = log['action'] as String;
+          final String oldValues = log['old_values'] as String? ?? '';
+          final String newValues = log['new_values'] as String? ?? '';
+          final String timestamp = log['timestamp'] as String;
+          final String deviceId = log['device_id'] as String;
+
+          final String payload = '$tableName|$recordId|$action|$oldValues|$newValues|$timestamp|$deviceId|$prevHash';
+          final String currentHash = sha256.convert(utf8.encode(payload)).toString();
+
+          await db.update(
+            'audit_logs',
+            {
+              'hash': currentHash,
+              'prev_hash': prevHash,
+            },
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+          prevHash = currentHash;
+        }
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -915,7 +964,9 @@ class DbHelper {
         old_values TEXT,
         new_values TEXT,
         timestamp TEXT NOT NULL,
-        device_id TEXT NOT NULL
+        device_id TEXT NOT NULL,
+        hash TEXT,
+        prev_hash TEXT
       )
     ''');
 
@@ -1315,6 +1366,53 @@ class DbHelper {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_items_company ON items(company_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_is_deleted ON purchases(id, is_deleted)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_is_deleted ON sales(id, is_deleted)');
+  }
+
+  /// Retrieves the hash of the latest audit log entry in the database.
+  /// If no entry exists, returns the genesis block seed.
+  Future<String> getLastAuditLogHash(DatabaseExecutor db) async {
+    final List<Map<String, dynamic>> res = await db.query(
+      'audit_logs',
+      columns: ['hash'],
+      orderBy: 'timestamp DESC, id DESC',
+      limit: 1,
+    );
+    if (res.isEmpty || res.first['hash'] == null) {
+      return '0000000000000000000000000000000000000000000000000000000000000000';
+    }
+    return res.first['hash'] as String;
+  }
+
+  /// Inserts a new audit log record, dynamically calculating and linking the cryptographic hash chain
+  Future<void> insertAuditLog(
+    DatabaseExecutor db, {
+    required String id,
+    required String tableName,
+    required String recordId,
+    required String action,
+    required String? oldValues,
+    required String? newValues,
+    required String timestamp,
+    required String deviceId,
+  }) async {
+    final String prevHash = await getLastAuditLogHash(db);
+    final String oldValStr = oldValues ?? '';
+    final String newValStr = newValues ?? '';
+    final String payload = '$tableName|$recordId|$action|$oldValStr|$newValStr|$timestamp|$deviceId|$prevHash';
+    final String currentHash = sha256.convert(utf8.encode(payload)).toString();
+
+    await db.insert('audit_logs', {
+      'id': id,
+      'table_name': tableName,
+      'record_id': recordId,
+      'action': action,
+      'old_values': oldValues,
+      'new_values': newValues,
+      'timestamp': timestamp,
+      'device_id': deviceId,
+      'hash': currentHash,
+      'prev_hash': prevHash,
+    });
   }
 
   /// Close connection
