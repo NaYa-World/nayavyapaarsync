@@ -9,11 +9,12 @@ class ExpenseRepository {
   final Uuid _uuid = const Uuid();
 
   /// Fetches all active expenses
-  Future<List<Expense>> getExpenses() async {
+  Future<List<Expense>> getExpenses({String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'expenses',
-      where: 'is_deleted = 0',
+      where: 'is_deleted = 0 AND company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'date DESC',
     );
     return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
@@ -32,10 +33,11 @@ class ExpenseRepository {
   }
 
   /// Inserts a new expense, writes to AuditLog and SyncQueue in a txn
-  Future<void> insertExpense(Expense expense, String deviceId) async {
+  Future<void> insertExpense(Expense expense, String deviceId, {String companyId = 'company_default'}) async {
     await FyGuard.checkDate(date: expense.date);
     final db = await _dbHelper.database;
     final map = expense.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.insert('expenses', map);
@@ -66,13 +68,14 @@ class ExpenseRepository {
   }
 
   /// Updates an expense, writes to AuditLog and SyncQueue in a txn
-  Future<void> updateExpense(Expense expense, String deviceId) async {
+  Future<void> updateExpense(Expense expense, String deviceId, {String companyId = 'company_default'}) async {
     final db = await _dbHelper.database;
     final currentExpense = await getExpense(expense.id);
     if (currentExpense == null) return;
     await FyGuard.checkDate(date: currentExpense.date);
     await FyGuard.checkDate(date: expense.date);
     final map = expense.toMap();
+    map['company_id'] = companyId;
 
     await db.transaction((txn) async {
       await txn.update(
