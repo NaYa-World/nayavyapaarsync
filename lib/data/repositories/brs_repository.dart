@@ -1,15 +1,32 @@
+import 'dart:convert';
+import 'package:uuid/uuid.dart';
 import '../database/db_helper.dart';
 import '../models/bank_instrument.dart';
 import '../models/bank_reconciliation.dart';
 
 class BrsRepository {
   final DbHelper _dbHelper = DbHelper();
+  final Uuid _uuid = const Uuid();
 
   // ─── Bank Instruments ──────────────────────────────────────────────────────
 
-  Future<void> insertBankInstrument(BankInstrument instrument) async {
+  Future<void> insertBankInstrument(BankInstrument instrument, {String deviceId = 'unknown_device'}) async {
     final db = await _dbHelper.database;
-    await db.insert('bank_instruments', instrument.toMap());
+    final map = instrument.toMap();
+    await db.transaction((txn) async {
+      await txn.insert('bank_instruments', map);
+
+      await txn.insert('audit_logs', {
+        'id': _uuid.v4(),
+        'table_name': 'bank_instruments',
+        'record_id': instrument.id,
+        'action': 'CREATE',
+        'old_values': null,
+        'new_values': jsonEncode(map),
+        'timestamp': DateTime.now().toIso8601String(),
+        'device_id': deviceId,
+      });
+    });
   }
 
   Future<List<BankInstrument>> getBankInstruments(String voucherId) async {
@@ -34,24 +51,59 @@ class BrsRepository {
     return rows;
   }
 
-  Future<void> updateInstrumentStatus(String instrumentId, String status, DateTime? clearedDate) async {
+  Future<void> updateInstrumentStatus(String instrumentId, String status, DateTime? clearedDate, {String deviceId = 'unknown_device'}) async {
     final db = await _dbHelper.database;
-    await db.update(
+    final List<Map<String, dynamic>> oldRows = await db.query(
       'bank_instruments',
-      {
-        'status': status,
-        'cleared_date': clearedDate?.toIso8601String().substring(0, 10),
-      },
       where: 'id = ?',
       whereArgs: [instrumentId],
     );
+    final oldMap = oldRows.isNotEmpty ? oldRows.first : null;
+    final newValues = {
+      'status': status,
+      'cleared_date': clearedDate?.toIso8601String().substring(0, 10),
+    };
+
+    await db.transaction((txn) async {
+      await txn.update(
+        'bank_instruments',
+        newValues,
+        where: 'id = ?',
+        whereArgs: [instrumentId],
+      );
+
+      await txn.insert('audit_logs', {
+        'id': _uuid.v4(),
+        'table_name': 'bank_instruments',
+        'record_id': instrumentId,
+        'action': 'EDIT',
+        'old_values': oldMap != null ? jsonEncode(oldMap) : null,
+        'new_values': jsonEncode(newValues),
+        'timestamp': DateTime.now().toIso8601String(),
+        'device_id': deviceId,
+      });
+    });
   }
 
   // ─── Bank Reconciliation ───────────────────────────────────────────────────
 
-  Future<void> insertBankReconciliation(BankReconciliation reconciliation) async {
+  Future<void> insertBankReconciliation(BankReconciliation reconciliation, {String deviceId = 'unknown_device'}) async {
     final db = await _dbHelper.database;
-    await db.insert('bank_reconciliation', reconciliation.toMap());
+    final map = reconciliation.toMap();
+    await db.transaction((txn) async {
+      await txn.insert('bank_reconciliation', map);
+
+      await txn.insert('audit_logs', {
+        'id': _uuid.v4(),
+        'table_name': 'bank_reconciliation',
+        'record_id': reconciliation.id,
+        'action': 'CREATE',
+        'old_values': null,
+        'new_values': jsonEncode(map),
+        'timestamp': DateTime.now().toIso8601String(),
+        'device_id': deviceId,
+      });
+    });
   }
 
   Future<BankReconciliation?> getLatestReconciliation(String bankLedgerId) async {
