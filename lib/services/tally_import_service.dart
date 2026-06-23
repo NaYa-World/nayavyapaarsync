@@ -738,6 +738,7 @@ class TallyImportService {
             'gst_rate': dbItem.gstRate,
             'gst_amt': gstAmt,
             'total': amount + gstAmt,
+            'amount_without_gst': amount,
             'batch_no': batch,
             'hsn_code': dbItem.hsnCode,
             'manufacturer': 'Tally Import',
@@ -787,6 +788,16 @@ class TallyImportService {
           finalGstTotal = exactGst;
           finalGrandTotal = exactGrand;
           finalSubtotal = finalGrandTotal - finalGstTotal;
+
+          if (subtotal > 0) {
+            for (final item in parsedItems) {
+              final double itemAmount = item['amount_without_gst'] as double;
+              final double proportion = itemAmount / subtotal;
+              final double allocatedGst = finalGstTotal * proportion;
+              item['gst_amt'] = allocatedGst;
+              item['total'] = itemAmount + allocatedGst;
+            }
+          }
         }
 
         if (isSale) {
